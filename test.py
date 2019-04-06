@@ -18,7 +18,8 @@ def test(
         conf_thres=0.1,
         nms_thres=0.5,
         save_json=False,
-        model=None
+        model=None,
+        var=None
 ):
     if model is None:
         device = torch_utils.select_device()
@@ -68,7 +69,7 @@ def test(
         target_list = build_targets(model, targets)
 
         # Compute loss
-        loss_i, _ = compute_loss(train_out, target_list)
+        loss_i, _ = compute_loss(train_out, target_list, var)
         loss += loss_i.item()
 
         # Run NMS
