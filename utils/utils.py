@@ -278,8 +278,8 @@ def compute_loss(p, targets):  # predictions, targets
             tconf[b, a, gj, gi] = 1  # conf
 
             lxy += (k * 8) * MSE(torch.sigmoid(pi[..., 0:2]), txy[i])  # xy loss
-            lwh += (k * 4) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh yolo loss
-            # lwh += (k * 4) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh power loss
+            # lwh += (k * 4) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh yolo loss
+            lwh += (k * 4) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh power loss
             lcls += (k * 1) * CE(pi[..., 5:], tcls[i])  # class_conf loss
 
         # pos_weight = FT([gp[i] / min(gp) * 4.])
@@ -328,8 +328,8 @@ def build_targets(model, targets):
         txy.append(gxy - gxy.floor())
 
         # Width and height
-        twh.append(torch.log(gwh / layer.anchor_vec[a]))  # yolo method
-        # twh.append((gwh / layer.anchor_vec[a]) ** (1 / 3) / 2)  # power method
+        # twh.append(torch.log(gwh / layer.anchor_vec[a]))  # yolo method
+        twh.append((gwh / layer.anchor_vec[a]) ** (1 / 3) / 2)  # power method
 
         # Class
         tcls.append(c)
