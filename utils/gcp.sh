@@ -43,6 +43,17 @@ gsutil cp gs://ultralytics/latest.pt yolov3/weights/latest.pt
 wget https://storage.googleapis.com/ultralytics/yolov3/latest_v1_0.pt -O weights/latest_v1_0.pt
 wget https://storage.googleapis.com/ultralytics/yolov3/best_v1_0.pt -O weights/best_v1_0.pt
 
+# Run examples
+git pull https://github.com/ultralytics/yolov3 #test
+python3 train.py --nosave --data-cfg data/coco_1cls.data --cfg cfg/yolov3-1cls.cfg && mv results.txt results_1cls_1clscfg.txt
+python3 train.py --nosave --data-cfg data/coco_1cls.data && mv results.txt results_1cls.txt
+python3 train.py --nosave --data-cfg data/coco_1img.data && mv results.txt results_1img.txt
+python3 train.py --nosave --data-cfg data/coco_10img.data && mv results.txt results_10img.txt
+python3 train.py --nosave --data-cfg data/coco_100img.data && mv results.txt results_100img.txt
+# python3 train.py --nosave --data-cfg data/coco_1000img.data && mv results.txt results_1000img.txt
+gsutil cp results*.txt gs://ultralytics
+sudo shutdown
+
 # Debug/Development
 sudo rm -rf yolov3
 git clone https://github.com/ultralytics/yolov3  # master
