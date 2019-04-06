@@ -234,6 +234,7 @@ if __name__ == '__main__':
     parser.add_argument('--nosave', action='store_true', help='do not save training results')
     parser.add_argument('--var', nargs='+', default=[8., 4., 1., 64., 0.1], help='debug list')
     opt = parser.parse_args()
+    opt.var = [float(x) for x in opt.var]
     print(opt, end='\n\n')
 
     init_seeds()
