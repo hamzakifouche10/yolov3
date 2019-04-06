@@ -19,7 +19,7 @@ def test(
         nms_thres=0.5,
         save_json=False,
         model=None,
-        var=None
+        var=32.0
 ):
     if model is None:
         device = torch_utils.select_device()
