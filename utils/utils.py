@@ -257,7 +257,7 @@ def wh_iou(box1, box2):
     return inter_area / union_area  # iou
 
 
-def compute_loss(p, targets):  # predictions, targets
+def compute_loss(p, targets, var):  # predictions, targets
     FT = torch.cuda.FloatTensor if p[0].is_cuda else torch.FloatTensor
     lxy, lwh, lcls, lconf = FT([0]), FT([0]), FT([0]), FT([0])
     txy, twh, tcls, indices = targets
@@ -279,7 +279,7 @@ def compute_loss(p, targets):  # predictions, targets
 
             lxy += (k * 8) * MSE(torch.sigmoid(pi[..., 0:2]), txy[i])  # xy loss
             # lwh += (k * 4) * MSE(pi[..., 2:4], twh[i])  # wh yolo loss
-            lwh += (k * 32) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh power loss
+            lwh += (k * var[0]) * MSE(torch.sigmoid(pi[..., 2:4]), twh[i])  # wh power loss
             lcls += (k * 1) * CE(pi[..., 5:], tcls[i])  # class_conf loss
 
         # pos_weight = FT([gp[i] / min(gp) * 4.])

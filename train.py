@@ -151,7 +151,7 @@ def train(
             target_list = build_targets(model, targets)
 
             # Compute loss
-            loss, loss_dict = compute_loss(pred, target_list)
+            loss, loss_dict = compute_loss(pred, target_list, opt.var)
 
             # Compute gradient
             loss.backward()
@@ -232,6 +232,7 @@ if __name__ == '__main__':
     parser.add_argument('--world-size', default=1, type=int, help='number of nodes for distributed training')
     parser.add_argument('--backend', default='nccl', type=str, help='distributed backend')
     parser.add_argument('--nosave', action='store_true', help='do not save training results')
+    parser.add_argument('--var', nargs='+', default=[8., 4., 1., 64., 0.1], help='debug list')
     opt = parser.parse_args()
     print(opt, end='\n\n')
 
