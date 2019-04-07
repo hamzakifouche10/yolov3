@@ -31,7 +31,7 @@ def train(
 
     if multi_scale:
         img_size = 608  # initiate with maximum multi_scale size
-        num_workers = 0  # bug https://github.com/ultralytics/yolov3/issues/174
+        # num_workers = 0  # bug https://github.com/ultralytics/yolov3/issues/174
     #else:
     torch.backends.cudnn.benchmark = True  # unsuitable for multiscale
 
