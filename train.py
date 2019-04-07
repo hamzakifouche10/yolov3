@@ -31,9 +31,9 @@ def train(
 
     if multi_scale:
         img_size = 608  # initiate with maximum multi_scale size
-        # num_workers = 0  # bug https://github.com/ultralytics/yolov3/issues/174
-    #else:
-    torch.backends.cudnn.benchmark = True  # unsuitable for multiscale
+        num_workers = 0  # bug https://github.com/ultralytics/yolov3/issues/174
+    else:
+        torch.backends.cudnn.benchmark = True  # unsuitable for multiscale
 
     # Configure run
     train_path = parse_data_cfg(data_cfg)['train']
@@ -86,7 +86,7 @@ def train(
     if torch.cuda.device_count() > 1:
         dist.init_process_group(backend=opt.backend, init_method=opt.dist_url, world_size=opt.world_size, rank=opt.rank)
         model = torch.nn.parallel.DistributedDataParallel(model)
-        sampler = None #torch.utils.data.distributed.DistributedSampler(dataset)
+        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
     else:
         sampler = None
 
