@@ -86,7 +86,7 @@ def train(
     if torch.cuda.device_count() > 1:
         dist.init_process_group(backend=opt.backend, init_method=opt.dist_url, world_size=opt.world_size, rank=opt.rank)
         model = torch.nn.parallel.DistributedDataParallel(model)
-        sampler = torch.utils.data.distributed.DistributedSampler(dataset)
+        sampler = None #torch.utils.data.distributed.DistributedSampler(dataset)
     else:
         sampler = None
 
