@@ -1,23 +1,24 @@
 <table style="width:100%">
   <tr>
-    <th>v2.2<img src="https://user-images.githubusercontent.com/26833433/52743528-e6096300-2fe2-11e9-970c-5fee45769fab.jpg" width="400"></th>
-        <th>v3.0<img src="https://user-images.githubusercontent.com/26833433/54523854-227d0580-4979-11e9-9801-26a3be239875.jpg" width="400"></th>
-    <th>
-      <a href="https://www.ultralytics.com" target="_blank">
-      <img src="https://storage.googleapis.com/ultralytics/logo/logoname1000.png" width="200">
-      </a>
-  <p> 
-    <a href="https://itunes.apple.com/app/id1452689527" target="_blank">
-    <img src="https://user-images.githubusercontent.com/26833433/50044365-9b22ac00-0082-11e9-862f-e77aee7aa7b0.png" width="180"> 
-    </a> 
-  </p></th> 
+    <td>
+      <img src="https://user-images.githubusercontent.com/26833433/61591130-f7beea00-abc2-11e9-9dc0-d6abcf41d713.jpg">
+    </td>
+    <td align="center">
+    <a href="https://www.ultralytics.com" target="_blank">
+    <img src="https://storage.googleapis.com/ultralytics/logo/logoname1000.png" width="160"></a>
+      <img src="https://user-images.githubusercontent.com/26833433/61591093-2b4d4480-abc2-11e9-8b46-d88eb1dabba1.jpg">
+          <a href="https://itunes.apple.com/app/id1452689527" target="_blank">
+    <img src="https://user-images.githubusercontent.com/26833433/50044365-9b22ac00-0082-11e9-862f-e77aee7aa7b0.png" width="180"></a>
+    </td>
+    <td>
+      <img src="https://user-images.githubusercontent.com/26833433/61591100-55066b80-abc2-11e9-9647-52c0e045b288.jpg">
+    </td>
   </tr>
 </table>
 
-
 # Introduction
 
-This directory contains python software and an iOS App developed by Ultralytics LLC, and **is freely available for redistribution under the GPL-3.0 license**. For more information please visit https://www.ultralytics.com.
+This directory contains PyTorch YOLOv3 software developed by Ultralytics LLC, and **is freely available for redistribution under the GPL-3.0 license**. For more information please visit https://www.ultralytics.com.
 
 # Description
 
@@ -25,12 +26,14 @@ The https://github.com/ultralytics/yolov3 repo contains inference and training c
 
 # Requirements
 
-Python 3.7 or later with the following `pip3 install -U -r requirements.txt` packages:
-
-- `numpy`
-- `torch >= 1.0.0`
+Python 3.7 or later with all of the `pip install -U -r requirements.txt` packages including:
+- `torch >= 1.4`
 - `opencv-python`
-- `tqdm`
+- `Pillow`
+
+All dependencies are included in the associated docker images. Docker requirements are: 
+- Nvidia Driver >= 440.44
+- Docker Engine - CE >= 19.03
 
 # Tutorials
 
@@ -40,16 +43,19 @@ Python 3.7 or later with the following `pip3 install -U -r requirements.txt` pac
 * [Train Single Class](https://github.com/ultralytics/yolov3/wiki/Example:-Train-Single-Class)
 * [Train Custom Data](https://github.com/ultralytics/yolov3/wiki/Train-Custom-Data)
 
+# Jupyter Notebook
+
+Our Jupyter [notebook](https://colab.research.google.com/github/ultralytics/yolov3/blob/master/examples.ipynb) provides quick training, inference and testing examples.
+
 # Training
 
-**Start Training:** Run `train.py` to begin training after downloading COCO data with `data/get_coco_dataset.sh`.
+**Start Training:** `python3 train.py` to begin training after downloading COCO data with `data/get_coco_dataset.sh`. Each epoch trains on 117,263 images from the train and validate COCO sets, and tests on 5000 images from the COCO validate set.
 
-**Resume Training:** Run `train.py --resume` resumes training from the latest checkpoint `weights/latest.pt`.
+**Resume Training:** `python3 train.py --resume` to resume training from `weights/last.pt`.
 
-Each epoch trains on 120,000 images from the train and validate COCO sets, and tests on 5000 images from the COCO validate set. Default training settings produce loss plots below, with **training speed of 0.6 s/batch on a 1080 Ti (18 epochs/day)** or 0.45 s/batch on a 2080 Ti.
+**Plot Training:** `from utils import utils; utils.plot_results()` plots training results from `coco_16img.data`, `coco_64img.data`, 2 example datasets available in the `data/` folder, which train and test on the first 16 and 64 images of the COCO2014-trainval dataset.
 
-`from utils import utils; utils.plot_results()`
-![Alt](https://user-images.githubusercontent.com/26833433/53494085-3251aa00-3a9d-11e9-8af7-8c08cf40d70b.png "train.py results")
+<img src="https://user-images.githubusercontent.com/26833433/63258271-fe9d5300-c27b-11e9-9a15-95038daf4438.png" width="900">
 
 ## Image Augmentation
 
@@ -65,136 +71,127 @@ Reflection | 50% probability (horizontal-only)
 H**S**V Saturation | +/- 50%
 HS**V** Intensity | +/- 50%
 
-<img src="https://user-images.githubusercontent.com/26833433/50525037-6cbcbc00-0ad9-11e9-8c38-9fd51af530e0.jpg">
+<img src="https://user-images.githubusercontent.com/26833433/66699231-27beea80-ece5-11e9-9cad-bdf9d82c500a.jpg" width="900">
 
 ## Speed
 
 https://cloud.google.com/deep-learning-vm/  
-**Machine type:** n1-standard-8 (8 vCPUs, 30 GB memory)  
+**Machine type:** preemptible [n1-standard-16](https://cloud.google.com/compute/docs/machine-types) (16 vCPUs, 60 GB memory)   
 **CPU platform:** Intel Skylake  
-**GPUs:** K80 ($0.198/hr), P4 ($0.279/hr), T4 ($0.353/hr), P100 ($0.493/hr), V100 ($0.803/hr)  
-**HDD:** 100 GB SSD  
-**Dataset:** COCO train 2014 
+**GPUs:** K80 ($0.20/hr), T4 ($0.35/hr), V100 ($0.83/hr) CUDA with [Nvidia Apex](https://github.com/NVIDIA/apex) FP16/32  
+**HDD:** 1 TB SSD  
+**Dataset:** COCO train 2014 (117,263 images)  
+**Model:** `yolov3-spp.cfg`  
+**Command:**  `python3 train.py --img 416 --batch 32 --accum 2`
 
-GPUs | `batch_size` | batch time | epoch time | epoch cost
---- |---| --- | --- | --- 
-<i></i> |  (images)  | (s/batch) |  |
-1 K80 | 16 | 1.43s  | 175min  | $0.58
-1 P4 | 8 | 0.51s  | 125min  | $0.58
-1 T4 | 16 | 0.78s  | 94min  | $0.55
-1 P100 | 16 | 0.39s  | 48min  | $0.39
-2 P100 | 32 | 0.48s | 29min | $0.47
-4 P100 | 64 | 0.65s | 20min | $0.65
-1 V100 | 16 | 0.25s  | 31min | $0.41
-2 V100 | 32 | 0.29s | 18min | $0.48
-4 V100 | 64 | 0.41s | 13min | $0.70
-8 V100 | 128 | 0.49s | 7min | $0.80
+GPU |n| `--batch --accum` | img/s | epoch<br>time | epoch<br>cost
+--- |--- |--- |--- |--- |---
+K80    |1| 32 x 2 | 11  | 175 min  | $0.58
+T4     |1<br>2| 32 x 2<br>64 x 1 | 41<br>61 | 48 min<br>32 min | $0.28<br>$0.36
+V100   |1<br>2| 32 x 2<br>64 x 1 | 122<br>**178** | 16 min<br>**11 min** | **$0.23**<br>$0.31
+2080Ti |1<br>2| 32 x 2<br>64 x 1 | 81<br>140 | 24 min<br>14 min | -<br>-
 
 # Inference
 
-Run `detect.py` to apply trained weights to an image, such as `zidane.jpg` from the `data/samples` folder:
+`detect.py` runs inference on any sources:
 
-**YOLOv3:** `python3 detect.py --cfg cfg/yolov3.cfg --weights weights/yolov3.weights`
-<img src="https://user-images.githubusercontent.com/26833433/50524393-b0adc200-0ad5-11e9-9335-4774a1e52374.jpg" width="600">
+```bash
+python3 detect.py --source ...
+```
 
-**YOLOv3-tiny:** `python3 detect.py --cfg cfg/yolov3-tiny.cfg --weights weights/yolov3-tiny.weights`
-<img src="https://user-images.githubusercontent.com/26833433/50374155-21427380-05ea-11e9-8d24-f1a4b2bac1ad.jpg" width="600">
+- Image:  `--source file.jpg`
+- Video:  `--source file.mp4`
+- Directory:  `--source dir/`
+- Webcam:  `--source 0`
+- RTSP stream:  `--source rtsp://170.93.143.139/rtplive/470011e600ef003a004ee33696235daa`
+- HTTP stream:  `--source http://wmccpinetop.axiscam.net/mjpg/video.mjpg`
 
-**YOLOv3-SPP:** `python3 detect.py --cfg cfg/yolov3-spp.cfg --weights weights/yolov3-spp.weights`
-<img src="https://user-images.githubusercontent.com/26833433/54747926-e051ff00-4bd8-11e9-8b5d-93a41d871ec7.jpg" width="600">
+To run a specific models:
 
-## Webcam
+**YOLOv3:** `python3 detect.py --cfg cfg/yolov3.cfg --weights yolov3.weights`  
+<img src="https://user-images.githubusercontent.com/26833433/64067835-51d5b500-cc2f-11e9-982e-843f7f9a6ea2.jpg" width="500">
 
-Run `detect.py` with `webcam=True` to show a live webcam feed.
+**YOLOv3-tiny:** `python3 detect.py --cfg cfg/yolov3-tiny.cfg --weights yolov3-tiny.weights`  
+<img src="https://user-images.githubusercontent.com/26833433/64067834-51d5b500-cc2f-11e9-9357-c485b159a20b.jpg" width="500">
+
+**YOLOv3-SPP:** `python3 detect.py --cfg cfg/yolov3-spp.cfg --weights yolov3-spp.weights`  
+<img src="https://user-images.githubusercontent.com/26833433/64067833-51d5b500-cc2f-11e9-8208-6fe197809131.jpg" width="500">
+
 
 # Pretrained Weights
 
-- Darknet `*.weights` format: https://pjreddie.com/media/files/yolov3.weights
-- PyTorch `*.pt` format: https://drive.google.com/drive/folders/1uxgUBemJVw9wZsdpboYbzUN4bcRhsuAI
+Download from: [https://drive.google.com/open?id=1LezFG5g3BCW6iYaV89B2i64cqEUZD7e0](https://drive.google.com/open?id=1LezFG5g3BCW6iYaV89B2i64cqEUZD7e0)
+
+## Darknet Conversion
+
+```bash
+$ git clone https://github.com/ultralytics/yolov3 && cd yolov3
+
+# convert darknet cfg/weights to pytorch model
+$ python3  -c "from models import *; convert('cfg/yolov3-spp.cfg', 'weights/yolov3-spp.weights')"
+Success: converted 'weights/yolov3-spp.weights' to 'converted.pt'
+
+# convert cfg/pytorch model to darknet weights
+$ python3  -c "from models import *; convert('cfg/yolov3-spp.cfg', 'weights/yolov3-spp.pt')"
+Success: converted 'weights/yolov3-spp.pt' to 'converted.weights'
+```
 
 # mAP
 
-- Use `test.py --weights weights/yolov3.weights` to test the official YOLOv3 weights.
-- Use `test.py --weights weights/latest.pt` to test the latest training results.
-- Compare to darknet published results https://arxiv.org/abs/1804.02767.
+<i></i>                      |Size |COCO mAP<br>@0.5...0.95 |COCO mAP<br>@0.5 
+---                          | ---         | ---         | ---
+YOLOv3-tiny<br>YOLOv3<br>YOLOv3-SPP<br>**[YOLOv3-SPP-ultralytics](https://drive.google.com/open?id=1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4)** |320 |14.0<br>28.7<br>30.5<br>**37.0** |29.1<br>51.8<br>52.3<br>**56.0**
+YOLOv3-tiny<br>YOLOv3<br>YOLOv3-SPP<br>**[YOLOv3-SPP-ultralytics](https://drive.google.com/open?id=1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4)** |416 |16.0<br>31.2<br>33.9<br>**40.7** |33.0<br>55.4<br>56.9<br>**60.4**
+YOLOv3-tiny<br>YOLOv3<br>YOLOv3-SPP<br>**[YOLOv3-SPP-ultralytics](https://drive.google.com/open?id=1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4)** |512 |16.6<br>32.7<br>35.6<br>**42.0** |34.9<br>57.7<br>59.5<br>**61.9**
+YOLOv3-tiny<br>YOLOv3<br>YOLOv3-SPP<br>**[YOLOv3-SPP-ultralytics](https://drive.google.com/open?id=1UcR-zVoMs7DH5dj3N1bswkiQTA4dmKF4)** |608 |16.6<br>33.1<br>37.0<br>**42.4** |35.4<br>58.2<br>60.7<br>**62.0**
 
-<!---
-%<i></i> | ultralytics/yolov3 OR-NMS 5:52@416 (`pycocotools`) | darknet  
---- | --- | ---  
-YOLOv3-320 | 51.9 (51.4) | 51.5  
-YOLOv3-416 | 55.0 (54.9) | 55.3  
-YOLOv3-608 | 57.5 (57.8) | 57.9  
+- mAP@0.5 run at `--iou-thr 0.5`, mAP@0.5...0.95 run at `--iou-thr 0.7`
+- Darknet results: https://arxiv.org/abs/1804.02767
 
-<i></i> | ultralytics/yolov3 MERGE-NMS 7:15@416 (`pycocotools`) | darknet  
---- | --- | ---  
-YOLOv3-320 | 52.3 (51.7) | 51.5  
-YOLOv3-416 | 55.4 (55.3) | 55.3  
-YOLOv3-608 | 57.9 (58.1) | 57.9  
+```bash
+$ python3 test.py --cfg yolov3-spp.cfg --weights yolov3-spp-ultralytics.pt --img 640 --augment
 
-<i></i> | ultralytics/yolov3 MERGE+earlier_pred4 8:34@416 (`pycocotools`) | darknet  
---- | --- | ---  
-YOLOv3-320 | 52.3 (51.8) | 51.5  
-YOLOv3-416 | 55.5 (55.4) | 55.3  
-YOLOv3-608 | 57.9 (58.2) | 57.9  
---->
-<i></i> | [ultralytics/yolov3](https://github.com/ultralytics/yolov3) | [darknet](https://arxiv.org/abs/1804.02767) 
---- | --- | ---  
-`YOLOv3 320` | 51.8 | 51.5  
-`YOLOv3 416` | 55.4 | 55.3  
-`YOLOv3 608` | 58.2 | 57.9  
-`YOLOv3-spp 320` | 52.4 | -  
-`YOLOv3-spp 416` | 56.5 | -  
-`YOLOv3-spp 608` | 60.7 | 60.6  
+Namespace(augment=True, batch_size=16, cfg='cfg/yolov3-spp.cfg', conf_thres=0.001, data='coco2014.data', device='', img_size=640, iou_thres=0.6, save_json=True, single_cls=False, task='test', weights='weight
+Using CUDA device0 _CudaDeviceProperties(name='Tesla V100-SXM2-16GB', total_memory=16130MB)
 
-``` bash
-sudo rm -rf yolov3 && git clone https://github.com/ultralytics/yolov3
-# bash yolov3/data/get_coco_dataset.sh
-sudo rm -rf cocoapi && git clone https://github.com/cocodataset/cocoapi && cd cocoapi/PythonAPI && make && cd ../.. && cp -r cocoapi/PythonAPI/pycocotools yolov3
-cd yolov3
- 
-python3 test.py --save-json --conf-thres 0.001 --img-size 608 --batch-size 16
-Namespace(batch_size=16, cfg='cfg/yolov3.cfg', conf_thres=0.001, data_cfg='cfg/coco.data', img_size=608, iou_thres=0.5, nms_thres=0.5, save_json=True, weights='weights/yolov3.weights')
-Using cuda _CudaDeviceProperties(name='Tesla V100-SXM2-16GB', major=7, minor=0, total_memory=16130MB, multi_processor_count=80)
-      Image      Total          P          R        mAP
-Calculating mAP: 100%|█████████████████████████████████| 313/313 [08:54<00:00,  1.55s/it]
-       5000       5000     0.0966      0.786      0.579
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.331
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.582
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.344
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.198
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.362
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.427
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.281
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.437
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.463
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.309
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.494
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.577
- 
-python3 test.py --weights weights/yolov3-spp.weights --cfg cfg/yolov3-spp.cfg --save-json --img-size 608 --batch-size 8
-Namespace(batch_size=8, cfg='cfg/yolov3-spp.cfg', conf_thres=0.001, data_cfg='data/coco.data', img_size=608, iou_thres=0.5, nms_thres=0.5, save_json=True, weights='weights/yolov3-spp.weights')
-Using cuda _CudaDeviceProperties(name='Tesla V100-SXM2-16GB', major=7, minor=0, total_memory=16130MB, multi_processor_count=80)
-       Image      Total          P          R        mAP
-Calculating mAP: 100%|█████████████████████████████████| 625/625 [07:01<00:00,  1.56it/s]
-       5000       5000       0.12       0.81      0.611
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.366
- Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.607
- Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.386
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.207
- Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.391
- Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.485
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.296
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.464
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.494
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.331
- Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.517
- Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.618
+               Class    Images   Targets         P         R   mAP@0.5        F1: 100%|█████████| 313/313 [03:00<00:00,  1.74it/s]
+                 all     5e+03  3.51e+04     0.396     0.731     0.634     0.509
+
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.447
+ Average Precision  (AP) @[ IoU=0.50      | area=   all | maxDets=100 ] = 0.641
+ Average Precision  (AP) @[ IoU=0.75      | area=   all | maxDets=100 ] = 0.485
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.271
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.492
+ Average Precision  (AP) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.583
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=  1 ] = 0.357
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets= 10 ] = 0.587
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=   all | maxDets=100 ] = 0.652
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= small | maxDets=100 ] = 0.488
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area=medium | maxDets=100 ] = 0.701
+ Average Recall     (AR) @[ IoU=0.50:0.95 | area= large | maxDets=100 ] = 0.787
+
+Speed: 21.3/3.0/24.4 ms inference/NMS/total per 640x640 image at batch-size 16
 ```
 
+# Reproduce Our Results
+
+This command trains `yolov3-spp.cfg` from scratch to our mAP above. Training takes about one week on a 2080Ti.
+```bash
+$ python3 train.py --weights '' --cfg yolov3-spp.cfg --epochs 273 --batch 16 --accum 4 --multi
+```
+<img src="https://user-images.githubusercontent.com/26833433/74633793-4f9cdf80-5117-11ea-9cd4-be4860640831.png" width="900">
+
+# Reproduce Our Environment
+
+To access an up-to-date working environment (with all dependencies including CUDA/CUDNN, Python and PyTorch preinstalled), consider a:
+
+- **GCP** Deep Learning VM with $300 free credit offer: See our [GCP Quickstart Guide](https://github.com/ultralytics/yolov3/wiki/GCP-Quickstart) 
+- **Google Colab Notebook** with 12 hours of free GPU time: [Google Colab Notebook](https://colab.research.google.com/drive/1G8T-VFxQkjDe4idzN8F-hbIBqkkkQnxw)
+- **Docker Image** from https://hub.docker.com/r/ultralytics/yolov3. See [Docker Quickstart Guide](https://github.com/ultralytics/yolov3/wiki/Docker-Quickstart) 
 # Citation
 
 [![DOI](https://zenodo.org/badge/146165888.svg)](https://zenodo.org/badge/latestdoi/146165888)
 
 # Contact
 
-Issues should be raised directly in the repository. For additional questions or comments please email Glenn Jocher at glenn.jocher@ultralytics.com or visit us at https://contact.ultralytics.com.
+**Issues should be raised directly in the repository.** For additional questions or comments please email Glenn Jocher at glenn.jocher@ultralytics.com or visit us at https://contact.ultralytics.com.
