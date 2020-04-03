@@ -1,3 +1,6 @@
+from typing import List, Dict, Tuple
+from torch import Tensor
+from torch.nn import ModuleList, Module
 import torch.nn.functional as F
 
 from utils.google_utils import *
@@ -6,6 +9,17 @@ from utils.utils import *
 
 ONNX_EXPORT = False
 
+
+class ExtSequential(nn.Sequential):
+    def __init__(self):
+        super(ExtSequential, self).__init__()
+    @torch.jit.export
+    def call1(self, x):
+         return self(x)
+    def call2(self, x1, x2: List[Tensor]):
+         return torch.tensor(0)
+    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+        return torch.tensor(0), torch.tensor(0)
 
 def create_modules(module_defs, img_size):
     # Constructs module list of layer blocks from module configuration in module_defs
@@ -17,21 +31,21 @@ def create_modules(module_defs, img_size):
     yolo_index = -1
 
     for i, mdef in enumerate(module_defs):
-        modules = nn.Sequential()
+        modules = ExtSequential()
         # if i == 0:
         #     modules.add_module('BatchNorm2d_0', nn.BatchNorm2d(output_filters[-1], momentum=0.1))
 
         if mdef['type'] == 'convolutional':
-            bn = mdef['batch_normalize']
-            filters = mdef['filters']
-            size = mdef['size']
-            stride = mdef['stride'] if 'stride' in mdef else (mdef['stride_y'], mdef['stride_x'])
+            bn = int(mdef['batch_normalize'])
+            filters = int(mdef['filters'])
+            size = int(mdef['size'])
+            stride = int(mdef['stride']) if 'stride' in mdef else (int(mdef['stride_y']), int(mdef['stride_x']))
             modules.add_module('Conv2d', nn.Conv2d(in_channels=output_filters[-1],
                                                    out_channels=filters,
                                                    kernel_size=size,
                                                    stride=stride,
-                                                   padding=(size - 1) // 2 if mdef['pad'] else 0,
-                                                   groups=mdef['groups'] if 'groups' in mdef else 1,
+                                                   padding=(size - 1) // 2 if int(mdef['pad']) else 0,
+                                                   groups=int(mdef['groups']) if 'groups' in mdef else 1,
                                                    bias=not bn))
             if bn:
                 modules.add_module('BatchNorm2d', nn.BatchNorm2d(filters, momentum=0.003, eps=1E-4))
@@ -45,29 +59,29 @@ def create_modules(module_defs, img_size):
                 modules.add_module('activation', Swish())
 
         elif mdef['type'] == 'maxpool':
-            size = mdef['size']
-            stride = mdef['stride']
+            size = int(mdef['size'])
+            stride = int(mdef['stride'])
             maxpool = nn.MaxPool2d(kernel_size=size, stride=stride, padding=(size - 1) // 2)
             if size == 2 and stride == 1:  # yolov3-tiny
                 modules.add_module('ZeroPad2d', nn.ZeroPad2d((0, 1, 0, 1)))
                 modules.add_module('MaxPool2d', maxpool)
             else:
-                modules = maxpool
+                modules.add_module('MaxPool2d', maxpool)
 
         elif mdef['type'] == 'upsample':
             if ONNX_EXPORT:  # explicitly state size, avoid scale_factor
                 g = (yolo_index + 1) * 2 / 32  # gain
-                modules = nn.Upsample(size=tuple(int(x * g) for x in img_size))  # img_size = (320, 192)
+                modules.add_module('Upsample', nn.Upsample(size=tuple(int(x * g) for x in img_size)))  # img_size = (320, 192)
             else:
-                modules = nn.Upsample(scale_factor=mdef['stride'])
+                modules.add_module('Upsample', nn.Upsample(scale_factor=int(mdef['stride'])))
 
         elif mdef['type'] == 'route':  # nn.Sequential() placeholder for 'route' layer
-            layers = mdef['layers']
+            layers = [int(x) for x in mdef['layers'].split(',')]
             filters = sum([output_filters[l + 1 if l > 0 else l] for l in layers])
             routs.extend([i + l if l < 0 else l for l in layers])
 
         elif mdef['type'] == 'shortcut':  # nn.Sequential() placeholder for 'shortcut' layer
-            layers = mdef['from']
+            layers = [int(x) for x in mdef['from'].split(',')]
             filters = output_filters[-1]
             routs.extend([i + l if l < 0 else l for l in layers])
             modules = weightedFeatureFusion(layers=layers, weight='weights_type' in mdef)
@@ -77,9 +91,11 @@ def create_modules(module_defs, img_size):
 
         elif mdef['type'] == 'yolo':
             yolo_index += 1
-            l = mdef['from'] if 'from' in mdef else []
-            modules = YOLOLayer(anchors=mdef['anchors'][mdef['mask']],  # anchor list
-                                nc=mdef['classes'],  # number of classes
+            l = [int(x) for x in mdef['from'].split(',')] if 'from' in mdef else []
+            mask = [int(x) for x in mdef['mask'].split(',')]
+            anchors = torch.tensor([float(x) for x in mdef['anchors'].split(',')]).reshape((-1, 2))
+            modules = YOLOLayer(anchors=anchors[mask],  # anchor list
+                                nc=int(mdef['classes']),  # number of classes
                                 img_size=img_size,  # (416, 416)
                                 yolo_index=yolo_index,  # 0, 1, 2...
                                 layers=l)  # output layers
@@ -117,8 +133,7 @@ class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
         self.layers = layers  # layer indices
         self.weight = weight  # apply weights boolean
         self.n = len(layers) + 1  # number of layers
-        if weight:
-            self.w = torch.nn.Parameter(torch.zeros(self.n))  # layer weights
+        self.w = torch.nn.Parameter(torch.zeros(self.n))  # layer weights
 
     def forward(self, x, outputs):
         # Weights
@@ -141,6 +156,14 @@ class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
             else:  # same shape
                 x = x + a
         return x
+    def call1(self, x):
+         return torch.tensor(0)
+    def call2(self, x1, x2: List[Tensor]):
+        return self.__call__(x1, x2)
+    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+        return torch.tensor(0), torch.tensor(0)
+
+
 
 
 class SwishImplementation(torch.autograd.Function):
@@ -171,9 +194,10 @@ class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
 
 
 class YOLOLayer(nn.Module):
-    def __init__(self, anchors, nc, img_size, yolo_index, layers):
+    layers: List[int]
+    def __init__(self, anchors, nc, img_size, yolo_index, layers: List[int]):
         super(YOLOLayer, self).__init__()
-        self.anchors = torch.Tensor(anchors)
+        self.anchors = anchors
         self.index = yolo_index  # index of this layer in layers
         self.layers = layers  # model output layer indices
         self.nl = len(layers)  # number of output layers (3)
@@ -182,78 +206,74 @@ class YOLOLayer(nn.Module):
         self.no = nc + 5  # number of outputs (85)
         self.nx = 0  # initialize number of x gridpoints
         self.ny = 0  # initialize number of y gridpoints
+        self.img_size = 0
+        self.stride = 0.
+        self.grid_xy = Tensor()
+        self.anchor_vec = Tensor()
+        self.anchor_wh = Tensor()
+        self.ng = Tensor()
+        self.ONNX_EXPORT = ONNX_EXPORT
 
         if ONNX_EXPORT:
             stride = [32, 16, 8][yolo_index]  # stride of this layer
             nx = img_size[1] // stride  # number x grid points
             ny = img_size[0] // stride  # number y grid points
-            create_grids(self, img_size, (nx, ny))
+            self.create_grids(img_size, (nx, ny))
 
-    def forward(self, p, img_size, out):
-        ASFF = False  # https://arxiv.org/abs/1911.09516
-        if ASFF:
-            i, n = self.index, self.nl  # index in layers, number of layers
-            p = out[self.layers[i]]
-            bs, _, ny, nx = p.shape  # bs, 255, 13, 13
-            if (self.nx, self.ny) != (nx, ny):
-                create_grids(self, img_size, (nx, ny), p.device, p.dtype)
-
-            # outputs and weights
-            # w = F.softmax(p[:, -n:], 1)  # normalized weights
-            w = torch.sigmoid(p[:, -n:]) * (2 / n)  # sigmoid weights (faster)
-            # w = w / w.sum(1).unsqueeze(1)  # normalize across layer dimension
-
-            # weighted ASFF sum
-            p = out[self.layers[i]][:, :-n] * w[:, i:i + 1]
-            for j in range(n):
-                if j != i:
-                    p += w[:, j:j + 1] * \
-                         F.interpolate(out[self.layers[j]][:, :-n], size=[ny, nx], mode='bilinear', align_corners=False)
-
-        elif ONNX_EXPORT:
-            bs = 1  # batch size
-        else:
-            bs, _, ny, nx = p.shape  # bs, 255, 13, 13
-            if (self.nx, self.ny) != (nx, ny):
-                create_grids(self, img_size, (nx, ny), p.device, p.dtype)
+    def forward(self, p, img_size:List[int], out: List[Tensor])->Tuple[Tensor, Tensor]:
+        bs, _, ny, nx = p.shape  # bs, 255, 13, 13
+        if (self.nx, self.ny) != (nx, ny):
+            self.create_grids(img_size, (nx, ny), p)
 
         # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, classes + xywh)
         p = p.view(bs, self.na, self.no, self.ny, self.nx).permute(0, 1, 3, 4, 2).contiguous()  # prediction
 
-        if self.training:
-            return p
+        io = p.clone()  # inference output
+        io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid_xy  # xy
+        io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
+        io[..., :4] *= self.stride
+        torch.sigmoid_(io[..., 4:])
+        return io.view(bs, -1, self.no), p
 
-        elif ONNX_EXPORT:
-            # Avoid broadcasting for ANE operations
-            m = self.na * self.nx * self.ny
-            ng = 1 / self.ng.repeat((m, 1))
-            grid_xy = self.grid_xy.repeat((1, self.na, 1, 1, 1)).view(m, 2)
-            anchor_wh = self.anchor_wh.repeat((1, 1, self.nx, self.ny, 1)).view(m, 2) * ng
+    def call1(self, x):
+         return torch.tensor(0)
+    def call2(self, x1, x2: List[Tensor]):
+         return torch.tensor(0)
+    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+        return self(x1,x2,x3)
 
-            p = p.view(m, self.no)
-            xy = torch.sigmoid(p[:, 0:2]) + grid_xy  # x, y
-            wh = torch.exp(p[:, 2:4]) * anchor_wh  # width, height
-            p_cls = torch.sigmoid(p[:, 4:5]) if self.nc == 1 else \
-                torch.sigmoid(p[:, 5:self.no]) * torch.sigmoid(p[:, 4:5])  # conf
-            return p_cls, xy * ng, wh
+    def create_grids(self, img_size:List[int]=(416,416), ng:Tuple[int,int] =(13, 13), as_tensor=torch.tensor(0, device='cpu', dtype=torch.float32)):
+        nx, ny = ng  # x and y grid size
+        self.img_size = max(img_size)
+        self.stride = self.img_size / max(ng)
 
-        else:  # inference
-            io = p.clone()  # inference output
-            io[..., :2] = torch.sigmoid(io[..., :2]) + self.grid_xy  # xy
-            io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
-            io[..., :4] *= self.stride
-            torch.sigmoid_(io[..., 4:])
-            return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
+        # build xy offsets
+        yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
+        self.grid_xy = torch.stack((xv, yv), 2).to(as_tensor).view((1, 1, ny, nx, 2))
+
+        # build wh gains
+        self.anchor_vec = self.anchors.to(as_tensor) / self.stride
+        self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2).to(as_tensor)
+        self.ng = torch.tensor(ng).to(as_tensor)
+        self.nx = nx
+        self.ny = ny
 
 
 class Darknet(nn.Module):
     # YOLOv3 object detection model
-
+    module_defs: List[Dict[str, str]]
+    #module_list: ModuleList
+    routs: List[bool]
+    route_layers: List[List[int]]
+    #__constants__ = ['module_list']
     def __init__(self, cfg, img_size=(416, 416)):
         super(Darknet, self).__init__()
 
+        self.img_size = 0
+
         self.module_defs = parse_model_cfg(cfg)
         self.module_list, self.routs = create_modules(self.module_defs, img_size)
+        self.route_layers = [([int(layer) for layer in mdef['layers'].split(',')] if 'layers' in mdef else []) for mdef in self.module_defs]
         self.yolo_layers = get_yolo_layers(self)
 
         # Darknet Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
@@ -261,53 +281,40 @@ class Darknet(nn.Module):
         self.seen = np.array([0], dtype=np.int64)  # (int64) number of images seen during training
         self.info()  # print model description
 
-    def forward(self, x, verbose=False):
+    def forward(self, x):
         img_size = x.shape[-2:]
-        yolo_out, out = [], []
-        if verbose:
-            str = ''
-            print('0', x.shape)
-
-        for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
+        yolo_out_io: List[Tensor] = []
+        yolo_out_p: List[Tensor] = []
+        out: List[Tensor] = []
+        i = -1
+        for module in self.module_list:
+            i += 1
+            mdef = self.module_defs[i]
+            # module = ExtModule(module)
             mtype = mdef['type']
             if mtype in ['convolutional', 'upsample', 'maxpool']:
-                x = module(x)
+                x = module.call1(x)
             elif mtype == 'shortcut':  # sum
-                if verbose:
-                    l = [i - 1] + module.layers  # layers
-                    s = [list(x.shape)] + [list(out[i].shape) for i in module.layers]  # shapes
-                    str = ' >> ' + ' + '.join(['layer %g %s' % x for x in zip(l, s)])
-                x = module(x, out)  # weightedFeatureFusion()
+                x = module.call2(x, out)  # weightedFeatureFusion()
             elif mtype == 'route':  # concat
-                layers = mdef['layers']
-                if verbose:
-                    l = [i - 1] + layers  # layers
-                    s = [list(x.shape)] + [list(out[i].shape) for i in layers]  # shapes
-                    str = ' >> ' + ' + '.join(['layer %g %s' % x for x in zip(l, s)])
+                layers = self.route_layers[i]
                 if len(layers) == 1:
                     x = out[layers[0]]
                 else:
-                    try:
+                    #try:
                         x = torch.cat([out[i] for i in layers], 1)
-                    except:  # apply stride 2 for darknet reorg layer
-                        out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
-                        x = torch.cat([out[i] for i in layers], 1)
+                    # GVNC
+                    #except:  # apply stride 2 for darknet reorg layer
+                    #    out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
+                    #    x = torch.cat([out[i] for i in layers], 1)
                     # print(''), [print(out[i].shape) for i in layers], print(x.shape)
             elif mtype == 'yolo':
-                yolo_out.append(module(x, img_size, out))
-            out.append(x if self.routs[i] else [])
-            if verbose:
-                print('%g/%g %s -' % (i, len(self.module_list), mtype), list(x.shape), str)
-                str = ''
+                io, p = module.call3(x, img_size, out)
+                yolo_out_io.append(io)
+                yolo_out_p.append(p)
+            out.append(x if self.routs[i] else torch.tensor(0))
 
-        if self.training:  # train
-            return yolo_out
-        elif ONNX_EXPORT:  # export
-            x = [torch.cat(x, 0) for x in zip(*yolo_out)]
-            return x[0], torch.cat(x[1:3], 1)  # scores, boxes: 3780x80, 3780x4
-        else:  # test
-            io, p = zip(*yolo_out)  # inference output, training output
-            return torch.cat(io, 1), p
+        return torch.cat(yolo_out_io, 1), yolo_out_p
 
     def fuse(self):
         # Fuse Conv2d + BatchNorm2d layers throughout model
@@ -334,23 +341,6 @@ def get_yolo_layers(model):
     return [i for i, x in enumerate(model.module_defs) if x['type'] == 'yolo']  # [82, 94, 106] for yolov3
 
 
-def create_grids(self, img_size=416, ng=(13, 13), device='cpu', type=torch.float32):
-    nx, ny = ng  # x and y grid size
-    self.img_size = max(img_size)
-    self.stride = self.img_size / max(ng)
-
-    # build xy offsets
-    yv, xv = torch.meshgrid([torch.arange(ny), torch.arange(nx)])
-    self.grid_xy = torch.stack((xv, yv), 2).to(device).type(type).view((1, 1, ny, nx, 2))
-
-    # build wh gains
-    self.anchor_vec = self.anchors.to(device) / self.stride
-    self.anchor_wh = self.anchor_vec.view(1, self.na, 1, 1, 2).type(type)
-    self.ng = torch.Tensor(ng).to(device)
-    self.nx = nx
-    self.ny = ny
-
-
 def load_darknet_weights(self, weights, cutoff=-1):
     # Parses and loads the weights stored in 'weights'
 
@@ -373,7 +363,7 @@ def load_darknet_weights(self, weights, cutoff=-1):
     for i, (mdef, module) in enumerate(zip(self.module_defs[:cutoff], self.module_list[:cutoff])):
         if mdef['type'] == 'convolutional':
             conv = module[0]
-            if mdef['batch_normalize']:
+            if int(mdef['batch_normalize']):
                 # Load BN bias, weights, running mean and running variance
                 bn = module[1]
                 nb = bn.bias.numel()  # number of biases
@@ -414,7 +404,7 @@ def save_weights(self, path='model.weights', cutoff=-1):
             if mdef['type'] == 'convolutional':
                 conv_layer = module[0]
                 # If batch norm, load bn first
-                if mdef['batch_normalize']:
+                if int(mdef['batch_normalize']):
                     bn_layer = module[1]
                     bn_layer.bias.data.cpu().numpy().tofile(f)
                     bn_layer.weight.data.cpu().numpy().tofile(f)

@@ -1,7 +1,23 @@
 import os
 
-import numpy as np
-
+# class ModuleDef(TypedDict):
+#     type: str
+#     batch_normalize: int
+#     filters: int
+#     size: int
+#     stride: int
+#     pad: int
+#     activation: str
+#     layers: List[int]
+#     groups: int
+#     from: List[int]
+#     mask: List[int]
+#     anchors: List[Tensor]
+#     classes: int
+#     stride_y: int
+#     stride_x: int
+#     weights_type: int
+#     channels: int
 
 def parse_model_cfg(path):
     # Parse the yolo *.cfg file and return module definitions path may be 'cfg/yolov3.cfg', 'yolov3.cfg', or 'yolov3'
@@ -20,32 +36,23 @@ def parse_model_cfg(path):
             mdefs.append({})
             mdefs[-1]['type'] = line[1:-1].rstrip()
             if mdefs[-1]['type'] == 'convolutional':
-                mdefs[-1]['batch_normalize'] = 0  # pre-populate with zeros (may be overwritten later)
+                mdefs[-1]['batch_normalize'] = '0'  # pre-populate with zeros (may be overwritten later)
         else:
             key, val = line.split("=")
             key = key.rstrip()
-
-            if key == 'anchors':  # return nparray
-                mdefs[-1][key] = np.array([float(x) for x in val.split(',')]).reshape((-1, 2))  # np anchors
-            elif key in ['from', 'layers', 'mask']:  # return array
-                mdefs[-1][key] = [int(x) for x in val.split(',')]
-            else:
-                val = val.strip()
-                if val.isnumeric():  # return int or float
-                    mdefs[-1][key] = int(val) if (int(val) - float(val)) == 0 else float(val)
-                else:
-                    mdefs[-1][key] = val  # return string
+            val = val.strip()
+            mdefs[-1][key] = val  # return string
 
     # Check all fields are supported
     supported = ['type', 'batch_normalize', 'filters', 'size', 'stride', 'pad', 'activation', 'layers', 'groups',
-                 'from', 'mask', 'anchors', 'classes', 'num', 'jitter', 'ignore_thresh', 'truth_thresh', 'random',
-                 'stride_x', 'stride_y', 'weights_type', 'weights_normalization', 'scale_x_y', 'beta_nms', 'nms_kind',
+                 'from', 'mask', 'anchors', 'classes', 'stride_x', 'stride_y', 'weights_type']
+    supported_but_ignored = ['num', 'jitter', 'ignore_thresh', 'truth_thresh', 'random', 'weights_normalization', 'scale_x_y', 'beta_nms', 'nms_kind',
                  'iou_loss', 'iou_normalizer', 'cls_normalizer', 'iou_thresh']
 
     f = []  # fields
     for x in mdefs[1:]:
         [f.append(k) for k in x if k not in f]
-    u = [x for x in f if x not in supported]  # unsupported fields
+    u = [x for x in f if x not in supported and x not in supported_but_ignored]  # unsupported fields
     assert not any(u), "Unsupported fields %s in %s. See https://github.com/ultralytics/yolov3/issues/631" % (u, path)
 
     return mdefs

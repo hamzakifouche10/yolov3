@@ -40,6 +40,8 @@ def detect(save_img=False):
     # Eval mode
     model.to(device).eval()
 
+    #model = torch.jit.script(model)
+
     # Export mode
     if ONNX_EXPORT:
         model.fuse()
