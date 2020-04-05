@@ -52,7 +52,7 @@ def detect(save_img=False):
     # Eval mode
     model.to(device).eval()
 
-    #model = torch.jit.script(model)
+    model = torch.jit.script(model)
 
     # Export mode
     if ONNX_EXPORT:
@@ -86,6 +86,26 @@ def detect(save_img=False):
     # Get names and colors
     names = load_classes(opt.names)
     colors = [[random.randint(0, 255) for _ in range(3)] for _ in range(len(names))]
+    colors = [[173, 70, 6], [164, 29, 217], [24, 84, 84], [58, 141, 36], [29, 39, 15],
+     [169, 103, 78], [199, 153, 252], [191, 14, 143], [33, 30, 106],
+     [119, 248, 132], [183, 209, 94], [170, 131, 135], [161, 211, 8],
+     [0, 127, 99], [251, 93, 145], [175, 206, 141], [249, 2, 236],
+     [133, 242, 232], [106, 53, 33], [133, 203, 190], [133, 201, 20],
+     [224, 80, 78], [231, 21, 21], [237, 144, 25], [230, 45, 200],
+     [24, 61, 69], [246, 240, 9], [109, 156, 164], [124, 242, 227],
+     [87, 161, 8], [101, 115, 167], [187, 116, 201], [228, 238, 218],
+     [41, 58, 124], [140, 253, 55], [74, 167, 254], [219, 96, 227],
+     [62, 111, 88], [194, 136, 33], [105, 236, 59], [203, 209, 85],
+     [189, 44, 27], [141, 242, 45], [234, 99, 24], [67, 184, 109],
+     [154, 132, 144], [174, 12, 123], [232, 134, 126], [242, 189, 3],
+     [73, 58, 72], [28, 86, 197], [206, 229, 138], [36, 97, 189],
+     [92, 24, 128], [237, 98, 239], [176, 30, 200], [215, 141, 36],
+     [192, 218, 1], [65, 232, 164], [154, 174, 51], [105, 41, 170],
+     [240, 16, 25], [58, 238, 14], [157, 190, 137], [140, 7, 143],
+     [102, 66, 74], [141, 129, 170], [179, 82, 50], [168, 58, 180],
+     [233, 40, 0], [194, 230, 194], [201, 148, 2], [0, 104, 64],
+     [152, 155, 170], [112, 248, 134], [39, 76, 179], [14, 149, 151],
+     [241, 104, 21], [76, 21, 180], [189, 16, 41]]
 
     # Run inference
     t0 = time.time()
@@ -99,14 +119,20 @@ def detect(save_img=False):
         # Inference
         t1 = torch_utils.time_synchronized()
         pred = model(img)[0].float() if half else model(img)[0]
-        t2 = torch_utils.time_synchronized()
+
+        # for i, s, x in model.trace_x:
+        #     print(i)
+        #     print(model.module_defs[i])
+        #     print(s)
+        #     print(x)
 
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
+        t2 = torch_utils.time_synchronized()
 
         # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
+        # if classify:
+        #     pred = apply_classifier(pred, modelc, img, im0s)
 
         # Process detections
         for i, det in enumerate(pred):  # detections per image

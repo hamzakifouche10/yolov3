@@ -12,26 +12,35 @@ ONNX_EXPORT = False
 class CallsExt(object):
     def __init__(self):
         super(CallsExt, self).__init__()
-        self.idx = "-1"
+        self.idx_and_name = "-1"
+
+        self.na = torch.tensor(0)
+        self.no = torch.tensor(0)
+        self.ny = torch.tensor(0)
+        self.nx = torch.tensor(0)
+        self.grid_xy = torch.tensor(0)
+        self.anchor_wh = torch.tensor(0)
+        self.stride = torch.tensor(0)
+
     def call1(self, x):
         #print("call 1 called for " + self.idx + " "  + self.__class__.__name__)
         #raise Exception("call 1 called for " + self.__class__.__name__)
-        return x
+        return torch.tensor(0), self.idx_and_name
     def call2(self, x1, x2: List[Tensor]):
         #print("call 2 called for " + self.idx + " "  + self.__class__.__name__)
         #raise Exception("call 2 called for " + self.__class__.__name__)
-        return x1
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+        return torch.tensor(0), self.idx_and_name
+    def call3(self, x1, x2: List[int], x3: List[Tensor]):
         #print("call 3 called for " + self.idx + " " + self.__class__.__name__)
         #raise Exception("call 3 called for " + self.__class__.__name__)
-        return x1, x1
+        return (torch.tensor(0), torch.tensor(0)), self.idx_and_name
 
 class ExtSequential(CallsExt, nn.Sequential):
     def __init__(self):
         super(ExtSequential, self).__init__()
     @torch.jit.export
     def call1(self, x):
-         return self(x)
+         return self(x), self.idx_and_name
 
 def create_modules(module_defs, img_size):
     # Constructs module list of layer blocks from module configuration in module_defs
@@ -130,7 +139,7 @@ def create_modules(module_defs, img_size):
             print('Warning: Unrecognized Layer Type: ' + mdef['type'])
 
         # Register module list and number of output filters
-        modules.idx = str(i)
+        modules.idx_and_name = str(i) + " " + modules.__class__.__name__
         module_list.append(modules)
         output_filters.append(filters)
 
@@ -175,7 +184,7 @@ class weightedFeatureFusion(CallsExt, nn.Module):  # weighted sum of 2 or more l
                 x = x + a
         return x
     def call2(self, x1, x2: List[Tensor]):
-        return self(x1, x2)
+        return self(x1, x2), self.idx_and_name
 
 
 class SwishImplementation(torch.autograd.Function):
@@ -247,8 +256,8 @@ class YOLOLayer(CallsExt, nn.Module):
         torch.sigmoid_(io[..., 4:])
         return io.view(bs, -1, self.no), p
 
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
-        return self(x1,x2,x3)
+    def call3(self, x1, x2: List[int], x3: List[Tensor]):
+        return self(x1,x2,x3), self.idx_and_name
 
     def create_grids(self, img_size:List[int]=(416,416), ng:Tuple[int,int] =(13, 13), as_tensor=torch.tensor(0, device='cpu', dtype=torch.float32)):
         nx, ny = ng  # x and y grid size
@@ -274,6 +283,12 @@ class Darknet(nn.Module):
     routs: List[bool]
     route_layers: List[List[int]]
     #__constants__ = ['module_list']
+    yolo_out_io: List[Tensor]
+    yolo_out_p: List[Tensor]
+    out: List[Tensor]
+    trace: List[str]
+    trace_x: List[Tuple[int, str, Tensor]]
+
     def __init__(self, cfg, img_size=(416, 416)):
         super(Darknet, self).__init__()
 
@@ -288,43 +303,63 @@ class Darknet(nn.Module):
         self.version = np.array([0, 2, 5], dtype=np.int32)  # (int32) version info: major, minor, revision
         self.seen = np.array([0], dtype=np.int64)  # (int64) number of images seen during training
         self.info()  # print model description
+        self.yolo_out_io: List[Tensor] = []
+        self.yolo_out_p: List[Tensor] = []
+        self.out: List[Tensor] = []
+        self.trace_x: List[Tuple[int, str, Tensor]] = []
+        self.trace: List[str] = []
 
     def forward(self, x):
         img_size = x.shape[-2:]
-        yolo_out_io: List[Tensor] = []
-        yolo_out_p: List[Tensor] = []
-        out: List[Tensor] = []
+        s = ""
         i = -1
         for module in self.module_list:
+
             i += 1
             mdef = self.module_defs[i]
             # module = ExtModule(module)
             mtype = mdef['type']
             if mtype in ['convolutional', 'upsample', 'maxpool']:
                 assert(len(x.shape)>2)
-                x = module.call1(x)
+                x, s = module.call1(x)
+                self.trace_x.append((i,s,x,))
             elif mtype == 'shortcut':  # sum
-                x = module.call2(x, out)  # weightedFeatureFusion()
+                x, s = module.call2(x, self.out)  # weightedFeatureFusion()
+                self.trace_x.append((i,s,x,))
             elif mtype == 'route':  # concat
+                s = 'route'
                 layers = self.route_layers[i]
                 if len(layers) == 1:
-                    x = out[layers[0]]
+                    x = self.out[layers[0]]
                 else:
                     #try:
-                        assert out[layers[0]].shape[2:] == out[layers[1]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layers[1]].shape)
-                        x = torch.cat([out[i] for i in layers], 1)
+                        assert self.out[layers[0]].shape[2:] == self.out[layers[1]].shape[2:],  str(self.out[layers[0]].shape) +" " + str(self.out[layers[1]].shape)
+                        x = torch.cat([self.out[layer] for layer in layers], 1)
                     # GVNC
                     #except:  # apply stride 2 for darknet reorg layer
                     #    out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
-                    #    x = torch.cat([out[i] for i in layers], 1)
-                    # print(''), [print(out[i].shape) for i in layers], print(x.shape)
+                    #    x = torch.cat([out[layer] for layer in layers], 1)
+                    # print(''), [print(out[layer].shape) for layer in layers], print(x.shape)
+                self.trace_x.append((i,s,x,))
             elif mtype == 'yolo':
-                io, p = module.call3(x, img_size, out)
-                yolo_out_io.append(io)
-                yolo_out_p.append(p)
-            out.append(x if self.routs[i] else torch.tensor(0))
+                (io, p), s = module.call3(x, img_size, self.out)
+                self.yolo_out_io.append(io)
+                self.yolo_out_p.append(p)
 
-        return torch.cat(yolo_out_io, 1), yolo_out_p
+                self.trace_x.append((i,s+" na", torch.tensor(module.na),))
+                self.trace_x.append((i,s+" no", torch.tensor(module.no),))
+                self.trace_x.append((i,s+" ny", torch.tensor(module.ny),))
+                self.trace_x.append((i,s+" nx", torch.tensor(module.nx),))
+                self.trace_x.append((i,s+" grid_xy", module.grid_xy,))
+                self.trace_x.append((i,s+" anchor_wh", module.anchor_wh,))
+                self.trace_x.append((i,s+" stride", torch.tensor(module.stride),))
+
+                self.trace_x.append((i,s, io,))
+                self.trace_x.append((i,s, p,))
+            self.out.append(x if self.routs[i] else torch.tensor(0))
+            self.trace.append(s)
+
+        return torch.cat(self.yolo_out_io, 1), self.yolo_out_p
 
     def fuse(self):
         # Fuse Conv2d + BatchNorm2d layers throughout model
