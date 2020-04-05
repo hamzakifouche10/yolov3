@@ -20,18 +20,6 @@ def detect(save_img=False):
     # Initialize model
     model = Darknet(opt.cfg, img_size)
 
-    # import itertools
-    # def load(module, prefix=''):
-    #     local_name_params = itertools.chain(module._parameters.items(), module._buffers.items())
-    #     local_state = {k: v for k, v in local_name_params if v is not None}
-    #     for name, param in local_state.items():
-    #         key = prefix + name
-    #         print(key)
-    #     for name, child in module._modules.items():
-    #         if child is not None:
-    #             load(child, prefix + name + '.')
-    # load(model)
-
     # Load weights
     attempt_download(weights)
     if weights.endswith('.pt'):  # pytorch format
@@ -119,9 +107,11 @@ def detect(save_img=False):
         # Inference
         t1 = torch_utils.time_synchronized()
         pred = model(img)[0].float() if half else model(img)[0]
+        t2 = torch_utils.time_synchronized()
+
         # Apply NMS
         pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        t2 = torch_utils.time_synchronized()
+        t3 = torch_utils.time_synchronized()
 
         # Apply Classifier
         if classify:
@@ -156,7 +146,7 @@ def detect(save_img=False):
                         plot_one_box(xyxy, im0, label=label, color=colors[int(cls)])
 
             # Print time (inference + NMS)
-            print('%sDone. (%.3fs)' % (s, t2 - t1))
+            print('%sDone. (%.3fs, %.3fs)' % (s, t2 - t1, t3 - t2))
 
             # Stream results
             if view_img:

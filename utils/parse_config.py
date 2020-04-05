@@ -1,24 +1,5 @@
 import os
 
-# class ModuleDef(TypedDict):
-#     type: str
-#     batch_normalize: int
-#     filters: int
-#     size: int
-#     stride: int
-#     pad: int
-#     activation: str
-#     layers: List[int]
-#     groups: int
-#     from: List[int]
-#     mask: List[int]
-#     anchors: List[Tensor]
-#     classes: int
-#     stride_y: int
-#     stride_x: int
-#     weights_type: int
-#     channels: int
-
 def parse_model_cfg(path):
     # Parse the yolo *.cfg file and return module definitions path may be 'cfg/yolov3.cfg', 'yolov3.cfg', or 'yolov3'
     if not path.endswith('.cfg'):  # add .cfg suffix if omitted
