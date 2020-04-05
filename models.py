@@ -10,21 +10,15 @@ from utils.utils import *
 ONNX_EXPORT = False
 
 class CallsExt(object):
-    def __init__(self):
-        super(CallsExt, self).__init__()
-        self.idx = "-1"
     def call1(self, x):
-        #print("call 1 called for " + self.idx + " "  + self.__class__.__name__)
-        #raise Exception("call 1 called for " + self.__class__.__name__)
-        return x
+        raise NotImplementedError
+        return torch.tensor(0)
     def call2(self, x1, x2: List[Tensor]):
-        #print("call 2 called for " + self.idx + " "  + self.__class__.__name__)
-        #raise Exception("call 2 called for " + self.__class__.__name__)
-        return x1
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
-        #print("call 3 called for " + self.idx + " " + self.__class__.__name__)
-        #raise Exception("call 3 called for " + self.__class__.__name__)
-        return x1, x1
+        raise NotImplementedError
+        return torch.tensor(0)
+    def call3(self, x1, x2: List[int], x3: List[Tensor]):
+        raise NotImplementedError
+        return torch.tensor(0), torch.tensor(0)
 
 class ExtSequential(CallsExt, nn.Sequential):
     def __init__(self):
@@ -130,7 +124,6 @@ def create_modules(module_defs, img_size):
             print('Warning: Unrecognized Layer Type: ' + mdef['type'])
 
         # Register module list and number of output filters
-        modules.idx = str(i)
         module_list.append(modules)
         output_filters.append(filters)
 
@@ -247,7 +240,7 @@ class YOLOLayer(CallsExt, nn.Module):
         torch.sigmoid_(io[..., 4:])
         return io.view(bs, -1, self.no), p
 
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+    def call3(self, x1, x2: List[int], x3: List[Tensor]):
         return self(x1,x2,x3)
 
     def create_grids(self, img_size:List[int]=(416,416), ng:Tuple[int,int] =(13, 13), as_tensor=torch.tensor(0, device='cpu', dtype=torch.float32)):
@@ -312,12 +305,12 @@ class Darknet(nn.Module):
                 else:
                     #try:
                         assert out[layers[0]].shape[2:] == out[layers[1]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layers[1]].shape)
-                        x = torch.cat([out[i] for i in layers], 1)
+                        x = torch.cat([out[layer] for layer in layers], 1)
                     # GVNC
                     #except:  # apply stride 2 for darknet reorg layer
                     #    out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
-                    #    x = torch.cat([out[i] for i in layers], 1)
-                    # print(''), [print(out[i].shape) for i in layers], print(x.shape)
+                    #    x = torch.cat([out[layer] for layer in layers], 1)
+                    # print(''), [print(out[layer].shape) for layer in layers], print(x.shape)
             elif mtype == 'yolo':
                 io, p = module.call3(x, img_size, out)
                 yolo_out_io.append(io)
