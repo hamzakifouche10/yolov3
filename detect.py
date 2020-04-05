@@ -20,6 +20,18 @@ def detect(save_img=False):
     # Initialize model
     model = Darknet(opt.cfg, img_size)
 
+    # import itertools
+    # def load(module, prefix=''):
+    #     local_name_params = itertools.chain(module._parameters.items(), module._buffers.items())
+    #     local_state = {k: v for k, v in local_name_params if v is not None}
+    #     for name, param in local_state.items():
+    #         key = prefix + name
+    #         print(key)
+    #     for name, child in module._modules.items():
+    #         if child is not None:
+    #             load(child, prefix + name + '.')
+    # load(model)
+
     # Load weights
     attempt_download(weights)
     if weights.endswith('.pt'):  # pytorch format

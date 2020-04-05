@@ -9,17 +9,29 @@ from utils.utils import *
 
 ONNX_EXPORT = False
 
+class CallsExt(object):
+    def __init__(self):
+        super(CallsExt, self).__init__()
+        self.idx = "-1"
+    def call1(self, x):
+        #print("call 1 called for " + self.idx + " "  + self.__class__.__name__)
+        #raise Exception("call 1 called for " + self.__class__.__name__)
+        return x
+    def call2(self, x1, x2: List[Tensor]):
+        #print("call 2 called for " + self.idx + " "  + self.__class__.__name__)
+        #raise Exception("call 2 called for " + self.__class__.__name__)
+        return x1
+    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
+        #print("call 3 called for " + self.idx + " " + self.__class__.__name__)
+        #raise Exception("call 3 called for " + self.__class__.__name__)
+        return x1, x1
 
-class ExtSequential(nn.Sequential):
+class ExtSequential(CallsExt, nn.Sequential):
     def __init__(self):
         super(ExtSequential, self).__init__()
     @torch.jit.export
     def call1(self, x):
          return self(x)
-    def call2(self, x1, x2: List[Tensor]):
-         return torch.tensor(0)
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
-        return torch.tensor(0), torch.tensor(0)
 
 def create_modules(module_defs, img_size):
     # Constructs module list of layer blocks from module configuration in module_defs
@@ -118,6 +130,7 @@ def create_modules(module_defs, img_size):
             print('Warning: Unrecognized Layer Type: ' + mdef['type'])
 
         # Register module list and number of output filters
+        modules.idx = str(i)
         module_list.append(modules)
         output_filters.append(filters)
 
@@ -127,19 +140,24 @@ def create_modules(module_defs, img_size):
     return module_list, routs_binary
 
 
-class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
+class weightedFeatureFusion(CallsExt, nn.Module):  # weighted sum of 2 or more layers https://arxiv.org/abs/1911.09070
     def __init__(self, layers, weight=False):
         super(weightedFeatureFusion, self).__init__()
         self.layers = layers  # layer indices
         self.weight = weight  # apply weights boolean
         self.n = len(layers) + 1  # number of layers
-        self.w = torch.nn.Parameter(torch.zeros(self.n))  # layer weights
+        if weight:
+            self.w = torch.nn.Parameter(torch.zeros(self.n))  # layer weights
+        else:
+            self.w = torch.tensor(0)
 
-    def forward(self, x, outputs):
+    def forward(self, x, outputs: List[Tensor]):
         # Weights
         if self.weight:
             w = torch.sigmoid(self.w) * (2 / self.n)  # sigmoid weights (0-1)
             x = x * w[0]
+        else:
+            w = torch.tensor(0)
 
         # Fusion
         nc = x.shape[1]  # input channels
@@ -156,14 +174,8 @@ class weightedFeatureFusion(nn.Module):  # weighted sum of 2 or more layers http
             else:  # same shape
                 x = x + a
         return x
-    def call1(self, x):
-         return torch.tensor(0)
     def call2(self, x1, x2: List[Tensor]):
-        return self.__call__(x1, x2)
-    def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
-        return torch.tensor(0), torch.tensor(0)
-
-
+        return self(x1, x2)
 
 
 class SwishImplementation(torch.autograd.Function):
@@ -193,7 +205,7 @@ class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
         return x.mul_(F.softplus(x).tanh())
 
 
-class YOLOLayer(nn.Module):
+class YOLOLayer(CallsExt, nn.Module):
     layers: List[int]
     def __init__(self, anchors, nc, img_size, yolo_index, layers: List[int]):
         super(YOLOLayer, self).__init__()
@@ -235,10 +247,6 @@ class YOLOLayer(nn.Module):
         torch.sigmoid_(io[..., 4:])
         return io.view(bs, -1, self.no), p
 
-    def call1(self, x):
-         return torch.tensor(0)
-    def call2(self, x1, x2: List[Tensor]):
-         return torch.tensor(0)
     def call3(self, x1, x2: List[int], x3: List[Tensor])->Tuple[Tensor, Tensor]:
         return self(x1,x2,x3)
 
@@ -293,6 +301,7 @@ class Darknet(nn.Module):
             # module = ExtModule(module)
             mtype = mdef['type']
             if mtype in ['convolutional', 'upsample', 'maxpool']:
+                assert(len(x.shape)>2)
                 x = module.call1(x)
             elif mtype == 'shortcut':  # sum
                 x = module.call2(x, out)  # weightedFeatureFusion()
@@ -302,6 +311,7 @@ class Darknet(nn.Module):
                     x = out[layers[0]]
                 else:
                     #try:
+                        assert out[layers[0]].shape[2:] == out[layers[1]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layers[1]].shape)
                         x = torch.cat([out[i] for i in layers], 1)
                     # GVNC
                     #except:  # apply stride 2 for darknet reorg layer
