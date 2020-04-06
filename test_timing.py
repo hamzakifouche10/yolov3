@@ -4,12 +4,14 @@ from models import Darknet
 from utils.datasets import LoadImages
 
 def run_test(model, dataset, device):
+    last_img = None
     for path, img, im0s, _ in dataset:
         img = torch.from_numpy(img).to(device)
         img = img.float()/255.0
         img = img.unsqueeze(0)
 
         # Inference
+        last_img = img
         torch.cuda.synchronize()
         t1 = time.time()
         with torch.no_grad():
@@ -17,6 +19,7 @@ def run_test(model, dataset, device):
         torch.cuda.synchronize()
         t2 = time.time()
         print('Done. (%.3fs)' % (t2 - t1))
+    return last_img
 
 
 
@@ -35,11 +38,11 @@ def run():
     dataset = LoadImages(source, img_size=img_size)
 
     print('before scripting:')
-    run_test(model, dataset, device)
+    img = run_test(model, dataset, device)
 
     print('after scripting:')
     model = torch.jit.script(model)
-    run_test(model, dataset, device)
+    img = run_test(model, dataset, device)
 
 if __name__ == '__main__':
     assert torch.cuda.is_available()
