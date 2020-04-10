@@ -95,12 +95,18 @@ def create_modules(module_defs, img_size):
         elif mdef['type'] == 'reorg3d':  # yolov3-spp-pan-scale
             pass
 
+        elif mdef['type'] == 'reorg':  # yolov3-spp-pan-scale
+            assert len(mdef) == 2 and 'stride' in mdef and mdef['stride'] != 0
+            pass
+
         elif mdef['type'] == 'yolo':
             yolo_index += 1
             l = [int(x) for x in mdef['from'].split(',')] if 'from' in mdef else []
-            mask = [int(x) for x in mdef['mask'].split(',')]
+            mask = [int(x) for x in mdef['mask'].split(',')] if 'mask' in mdef else []
             anchors = torch.tensor([float(x) for x in mdef['anchors'].split(',')]).reshape((-1, 2))
-            modules = YOLOLayer(anchors=anchors[mask],  # anchor list
+            if len(mask) > 0:
+                anchors = anchors[mask]
+            modules = YOLOLayer(anchors=anchors,  # anchor list
                                 nc=int(mdef['classes']),  # number of classes
                                 img_size=img_size,  # (416, 416)
                                 yolo_index=yolo_index,  # 0, 1, 2...
@@ -263,10 +269,9 @@ class YOLOLayer(CallsExt, nn.Module):
 class Darknet(nn.Module):
     # YOLOv3 object detection model
     module_defs: List[Dict[str, str]]
-    #module_list: ModuleList
     routs: List[bool]
     route_layers: List[List[int]]
-    #__constants__ = ['module_list']
+    strides: List[int]
     def __init__(self, cfg, img_size=(416, 416)):
         super(Darknet, self).__init__()
 
@@ -275,6 +280,7 @@ class Darknet(nn.Module):
         self.module_defs = parse_model_cfg(cfg)
         self.module_list, self.routs = create_modules(self.module_defs, img_size)
         self.route_layers = [([int(layer) for layer in mdef['layers'].split(',')] if 'layers' in mdef else []) for mdef in self.module_defs]
+        self.strides = [(int(mdef['stride']) if 'stride' in mdef else 0) for mdef in self.module_defs]
         self.yolo_layers = get_yolo_layers(self)
 
         # Darknet Header https://github.com/AlexeyAB/darknet/issues/2914#issuecomment-496675346
@@ -282,7 +288,7 @@ class Darknet(nn.Module):
         self.seen = np.array([0], dtype=np.int64)  # (int64) number of images seen during training
         self.info()  # print model description
 
-    def forward(self, x):
+    def core_forward(self, x):
         img_size = x.shape[-2:]
         yolo_out_io: List[Tensor] = []
         yolo_out_p: List[Tensor] = []
@@ -303,21 +309,26 @@ class Darknet(nn.Module):
                 if len(layers) == 1:
                     x = out[layers[0]]
                 else:
-                    #try:
-                        assert out[layers[0]].shape[2:] == out[layers[1]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layers[1]].shape)
-                        x = torch.cat([out[layer] for layer in layers], 1)
-                    # GVNC
-                    #except:  # apply stride 2 for darknet reorg layer
-                    #    out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
-                    #    x = torch.cat([out[layer] for layer in layers], 1)
+                    if out[layers[1]].shape[2:] != out[layers[0]].shape[2:]:
+                        out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
+                    for layer_no in layers[1:]:
+                        assert out[layer_no].shape[2:] == out[layers[0]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layer_no].shape) + " " + str(layer_no)
+                    x = torch.cat([out[layer] for layer in layers], 1)
                     # print(''), [print(out[layer].shape) for layer in layers], print(x.shape)
+            elif mtype == 'reorg':  # concat
+                x = F.interpolate(x, scale_factor=[1/self.strides[i], 1/self.strides[i]])
             elif mtype == 'yolo':
                 io, p = module.call3(x, img_size, out)
                 yolo_out_io.append(io)
                 yolo_out_p.append(p)
+            else:
+                raise Exception("Unsupported layer type [" + mtype + "]")
             out.append(x if self.routs[i] else torch.tensor(0))
 
         return torch.cat(yolo_out_io, 1), yolo_out_p
+
+    def forward(self, x):
+        return self.core_forward(x)
 
     def fuse(self):
         # Fuse Conv2d + BatchNorm2d layers throughout model
@@ -338,6 +349,37 @@ class Darknet(nn.Module):
 
     def info(self, verbose=False):
         torch_utils.model_info(self, verbose)
+
+
+class DarknetInferenceWithNMS(Darknet):
+    '''
+    returns list of (rects, best_class_id, best_class_score, class_scores)
+    '''
+    module_defs: List[Dict[str, str]]
+    routs: List[bool]
+    route_layers: List[List[int]]
+    strides: List[int]
+    classes: List[int]
+    def __init__(self, cfg, img_size=(416, 416), conf_thres=0.1, iou_thres=0.6, classes=[], agnostic_nms=False, half=False):
+        super(DarknetInferenceWithNMS, self).__init__(cfg, img_size)
+        self.conf_thres = conf_thres
+        self.iou_thres = iou_thres
+        self.classes = classes if classes is not None else []
+        self.agnostic_nms = agnostic_nms
+        self.half = half
+    def forward(self, img):
+        if len(img.shape) == 3:
+            if img.shape[-1] < 4:
+                img = img.permute(2,0,1)
+            img = img.unsqueeze(0)
+        if img.dtype == torch.uint8:
+            img = img.half() if self.half else img.float()  # uint8 to fp16/32
+            img /= 255.0  # 0 - 255 to 0.0 - 1.0
+        pred = self.core_forward(img)[0]
+        if self.half:
+            pred = pred.float()
+        res = non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
+        return [(r[:, :4], r[:, 5].long(), r[:, 4], r[:, 6:]) for r in res]
 
 
 def get_yolo_layers(model):

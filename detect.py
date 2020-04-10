@@ -18,7 +18,7 @@ def detect(save_img=False):
     os.makedirs(out)  # make new output folder
 
     # Initialize model
-    model = Darknet(opt.cfg, img_size)
+    model = DarknetInferenceWithNMS(opt.cfg, img_size, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic_nms=opt.agnostic_nms, half=half)
 
     # Load weights
     attempt_download(weights)
@@ -41,6 +41,7 @@ def detect(save_img=False):
     model.to(device).eval()
 
     model = torch.jit.script(model)
+    model.save(weights+'.pth')
 
     # Export mode
     if ONNX_EXPORT:
@@ -99,54 +100,42 @@ def detect(save_img=False):
     t0 = time.time()
     for path, img, im0s, vid_cap in dataset:
         img = torch.from_numpy(img).to(device)
-        img = img.half() if half else img.float()  # uint8 to fp16/32
-        img /= 255.0  # 0 - 255 to 0.0 - 1.0
-        if img.ndimension() == 3:
-            img = img.unsqueeze(0)
-
         # Inference
         t1 = torch_utils.time_synchronized()
-        pred = model(img)[0].float() if half else model(img)[0]
+        pred = model(img)
         t2 = torch_utils.time_synchronized()
 
-        # Apply NMS
-        pred = non_max_suppression(pred, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic=opt.agnostic_nms)
-        t3 = torch_utils.time_synchronized()
-
-        # Apply Classifier
-        if classify:
-            pred = apply_classifier(pred, modelc, img, im0s)
-
         # Process detections
-        for i, det in enumerate(pred):  # detections per image
+        for i, (rects, cls_ids, cls_scores, all_scores) in enumerate(pred):  # detections per image
             if webcam:  # batch_size >= 1
                 p, s, im0 = path[i], '%g: ' % i, im0s[i]
             else:
                 p, s, im0 = path, '', im0s
 
             save_path = str(Path(out) / Path(p).name)
-            s += '%gx%g ' % img.shape[2:]  # print string
-            if det is not None and len(det):
+            s += '%gx%g ' % img.shape[1:]  # print string
+            if len(rects):
                 # Rescale boxes from img_size to im0 size
-                det[:, :4] = scale_coords(img.shape[2:], det[:, :4], im0.shape).round()
+                rect = scale_coords(img.shape[1:], rects, im0.shape).round()
 
                 # Print results
-                for c in det[:, -1].unique():
-                    n = (det[:, -1] == c).sum()  # detections per class
+                for c in cls_ids.unique():
+                    n = (cls_ids == c).sum()  # detections per class
                     s += '%g %ss, ' % (n, names[int(c)])  # add to string
 
                 # Write results
-                for *xyxy, conf, cls in det:
+                for ri, rect in enumerate(rects):
+                    cls, conf = cls_ids[ri], cls_scores[ri]
                     if save_txt:  # Write to file
                         with open(save_path + '.txt', 'a') as file:
-                            file.write(('%g ' * 6 + '\n') % (*xyxy, cls, conf))
+                            file.write(('%g ' * 6 + '\n') % (*rect, cls, conf))
 
                     if save_img or view_img:  # Add bbox to image
                         label = '%s %.2f' % (names[int(cls)], conf)
-                        plot_one_box(xyxy, im0, label=label, color=colors[int(cls)])
+                        plot_one_box(rect, im0, label=label, color=colors[int(cls)])
 
             # Print time (inference + NMS)
-            print('%sDone. (%.3fs, %.3fs)' % (s, t2 - t1, t3 - t2))
+            print('%sDone. (%.3fs)' % (s, t2 - t1))
 
             # Stream results
             if view_img:
