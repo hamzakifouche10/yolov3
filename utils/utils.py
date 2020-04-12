@@ -572,8 +572,7 @@ def non_max_suppression(prediction, conf_thres: float, iou_thres: float, classes
     method = 'merge'
     nc = prediction[0].shape[1] - 5  # number of classes
     multi_label = nc > 1  # multiple labels per box
-    empty_list: List[float] = []
-    output = [torch.tensor(empty_list)] * len(prediction)
+    output = [torch.empty((0,)+prediction.shape[2:])] * len(prediction)
     for xi, x in enumerate(prediction):  # image index, image inference
         # Apply conf constraint
         x = x[x[:, 4] > conf_thres]

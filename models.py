@@ -7,7 +7,7 @@ from utils.google_utils import *
 from utils.parse_config import *
 from utils.utils import *
 
-ONNX_EXPORT = False
+ONNX_EXPORT = True
 
 class CallsExt(object):
     def call1(self, x):
@@ -95,7 +95,7 @@ def create_modules(module_defs, img_size):
         elif mdef['type'] == 'reorg3d':  # yolov3-spp-pan-scale
             pass
 
-        elif mdef['type'] == 'reorg':  # yolov3-spp-pan-scale
+        elif mdef['type'] == 'reorg':
             assert len(mdef) == 2 and 'stride' in mdef and mdef['stride'] != 0
             pass
 
@@ -233,8 +233,9 @@ class YOLOLayer(CallsExt, nn.Module):
 
     def forward(self, p, img_size:List[int], out: List[Tensor])->Tuple[Tensor, Tensor]:
         bs, _, ny, nx = p.shape  # bs, 255, 13, 13
-        if (self.nx, self.ny) != (nx, ny):
-            self.create_grids(img_size, (nx, ny), p)
+        # if not self.ONNX_EXPORT:
+        #     if (self.nx, self.ny) != (nx, ny):
+        #         self.create_grids(img_size, (nx, ny), p)
 
         # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, classes + xywh)
         p = p.view(bs, self.na, self.no, self.ny, self.nx).permute(0, 1, 3, 4, 2).contiguous()  # prediction

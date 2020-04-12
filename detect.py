@@ -41,14 +41,16 @@ def detect(save_img=False):
     model.to(device).eval()
 
     model = torch.jit.script(model)
-    model.save(weights+'.pth')
+    #model.save(weights+'.pth')
+    img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
+    r = model(img)
 
     # Export mode
     if ONNX_EXPORT:
-        model.fuse()
+        #model.fuse()
         img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
         f = opt.weights.replace(opt.weights.split('.')[-1], 'onnx')  # *.onnx filename
-        torch.onnx.export(model, img, f, verbose=False, opset_version=11)
+        torch.onnx.export(model, img, f, verbose=False, opset_version=11, example_outputs=r)
 
         # Validate exported model
         import onnx
