@@ -8,6 +8,8 @@ from utils.utils import *
 
 def detect(save_img=False):
     img_size = (320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
+    if isinstance(img_size, int):
+        img_size = (img_size, img_size,)
     out, source, weights, half, view_img, save_txt = opt.output, opt.source, opt.weights, opt.half, opt.view_img, opt.save_txt
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
 
@@ -18,6 +20,7 @@ def detect(save_img=False):
     os.makedirs(out)  # make new output folder
 
     # Initialize model
+    #model = Darknet(opt.cfg, img_size)
     model = DarknetInferenceWithNMS(opt.cfg, img_size, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic_nms=opt.agnostic_nms, half=half)
 
     # Load weights
@@ -38,16 +41,21 @@ def detect(save_img=False):
     # model.fuse()
 
     # Eval mode
+    model.fuse()
     model.to(device).eval()
 
-    model = torch.jit.script(model)
-    #model.save(weights+'.pth')
     img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
-    r = model(img)
+    r = model(img.to(device))
+
+    if TORCHSCRIPT_EXPORT:
+        model = torch.jit.script(model)
+        #model = torch.jit.trace(model, img)
+        model.save(weights+'.pth')
+        pass
 
     # Export mode
     if ONNX_EXPORT:
-        #model.fuse()
+        r = model(img.to(device))
         img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
         f = opt.weights.replace(opt.weights.split('.')[-1], 'onnx')  # *.onnx filename
         torch.onnx.export(model, img, f, verbose=False, opset_version=11, example_outputs=r)

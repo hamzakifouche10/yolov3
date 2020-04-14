@@ -1,4 +1,4 @@
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Callable
 from torch import Tensor
 from torch.nn import ModuleList, Module
 import torch.nn.functional as F
@@ -8,6 +8,8 @@ from utils.parse_config import *
 from utils.utils import *
 
 ONNX_EXPORT = True
+TORCHSCRIPT_EXPORT = True
+torch_script = torch.jit.script if (ONNX_EXPORT or TORCHSCRIPT_EXPORT) else (lambda x: x)
 
 class CallsExt(object):
     def call1(self, x):
@@ -18,11 +20,11 @@ class CallsExt(object):
         return torch.tensor(0)
     def call3(self, x1, x2: List[int], x3: List[Tensor]):
         raise NotImplementedError
-        return torch.tensor(0), torch.tensor(0)
+        return torch.tensor(0)
 
 class ExtSequential(CallsExt, nn.Sequential):
-    def __init__(self):
-        super(ExtSequential, self).__init__()
+    def __init__(self, *args):
+        super(ExtSequential, self).__init__(*args)
     @torch.jit.export
     def call1(self, x):
          return self(x)
@@ -206,6 +208,7 @@ class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
 
 class YOLOLayer(CallsExt, nn.Module):
     layers: List[int]
+    ONNX_EXPORT: torch.jit.Final[bool]
     def __init__(self, anchors, nc, img_size, yolo_index, layers: List[int]):
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
@@ -231,7 +234,7 @@ class YOLOLayer(CallsExt, nn.Module):
             ny = img_size[0] // stride  # number y grid points
             self.create_grids(img_size, (nx, ny))
 
-    def forward(self, p, img_size:List[int], out: List[Tensor])->Tuple[Tensor, Tensor]:
+    def forward(self, p, img_size:List[int], out: List[Tensor]):
         bs, _, ny, nx = p.shape  # bs, 255, 13, 13
         # if not self.ONNX_EXPORT:
         #     if (self.nx, self.ny) != (nx, ny):
@@ -245,7 +248,7 @@ class YOLOLayer(CallsExt, nn.Module):
         io[..., 2:4] = torch.exp(io[..., 2:4]) * self.anchor_wh  # wh yolo method
         io[..., :4] *= self.stride
         torch.sigmoid_(io[..., 4:])
-        return io.view(bs, -1, self.no), p
+        return io.view(bs, -1, self.no)
 
     def call3(self, x1, x2: List[int], x3: List[Tensor]):
         return self(x1,x2,x3)
@@ -273,6 +276,7 @@ class Darknet(nn.Module):
     routs: List[bool]
     route_layers: List[List[int]]
     strides: List[int]
+    out: List[Tensor] = []
     def __init__(self, cfg, img_size=(416, 416)):
         super(Darknet, self).__init__()
 
@@ -288,45 +292,60 @@ class Darknet(nn.Module):
         self.version = np.array([0, 2, 5], dtype=np.int32)  # (int32) version info: major, minor, revision
         self.seen = np.array([0], dtype=np.int64)  # (int64) number of images seen during training
         self.info()  # print model description
+        self.out = []
+        #self.route = torch_script(self.route)
+
+    def route(self, i: int):
+        layers = self.route_layers[i]
+        if len(layers) == 1:
+            x = self.out[layers[0]]
+        else:
+            if self.out[layers[1]].shape[2:] != self.out[layers[0]].shape[2:]:
+                self.out[layers[1]] = F.interpolate(self.out[layers[1]], scale_factor=[0.5, 0.5])
+            for layer_no in layers[1:]:
+                assert self.out[layer_no].shape[2:] == self.out[layers[0]].shape[2:], str(self.out[layers[0]].shape) + " " + str(
+                    self.out[layer_no].shape) + " " + str(layer_no)
+            x = torch.cat([self.out[layer] for layer in layers], 1)
+            # print(''), [print(self.out[layer].shape) for layer in layers], print(x.shape)
+        return x
 
     def core_forward(self, x):
         img_size = x.shape[-2:]
         yolo_out_io: List[Tensor] = []
-        yolo_out_p: List[Tensor] = []
-        out: List[Tensor] = []
         i = -1
+        self.out.clear()
         for module in self.module_list:
             i += 1
             mdef = self.module_defs[i]
-            # module = ExtModule(module)
             mtype = mdef['type']
             if mtype in ['convolutional', 'upsample', 'maxpool']:
                 assert(len(x.shape)>2)
                 x = module.call1(x)
             elif mtype == 'shortcut':  # sum
-                x = module.call2(x, out)  # weightedFeatureFusion()
+                x = module.call2(x, self.out)  # weightedFeatureFusion()
             elif mtype == 'route':  # concat
                 layers = self.route_layers[i]
                 if len(layers) == 1:
-                    x = out[layers[0]]
+                    x = self.out[layers[0]]
                 else:
-                    if out[layers[1]].shape[2:] != out[layers[0]].shape[2:]:
-                        out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
+                    if self.out[layers[1]].shape[2:] != self.out[layers[0]].shape[2:]:
+                        self.out[layers[1]] = F.interpolate(self.out[layers[1]], scale_factor=[0.5, 0.5])
                     for layer_no in layers[1:]:
-                        assert out[layer_no].shape[2:] == out[layers[0]].shape[2:],  str(out[layers[0]].shape) +" " + str(out[layer_no].shape) + " " + str(layer_no)
-                    x = torch.cat([out[layer] for layer in layers], 1)
-                    # print(''), [print(out[layer].shape) for layer in layers], print(x.shape)
+                        assert self.out[layer_no].shape[2:] == self.out[layers[0]].shape[2:], str(
+                            self.out[layers[0]].shape) + " " + str(
+                            self.out[layer_no].shape) + " " + str(layer_no)
+                    x = torch.cat([self.out[layer] for layer in layers], 1)
+                    # print(''), [print(self.out[layer].shape) for layer in layers], print(x.shape)
             elif mtype == 'reorg':  # concat
-                x = F.interpolate(x, scale_factor=[1/self.strides[i], 1/self.strides[i]])
+                assert False
             elif mtype == 'yolo':
-                io, p = module.call3(x, img_size, out)
+                io = module.call3(x, img_size, self.out)
                 yolo_out_io.append(io)
-                yolo_out_p.append(p)
             else:
                 raise Exception("Unsupported layer type [" + mtype + "]")
-            out.append(x if self.routs[i] else torch.tensor(0))
+            self.out.append(x if self.routs[i] else torch.tensor(0))
 
-        return torch.cat(yolo_out_io, 1), yolo_out_p
+        return torch.cat(yolo_out_io, 1)
 
     def forward(self, x):
         return self.core_forward(x)
@@ -341,8 +360,9 @@ class Darknet(nn.Module):
                     if isinstance(b, nn.modules.batchnorm.BatchNorm2d):
                         # fuse this bn layer with the previous conv2d layer
                         conv = a[i - 1]
+                        assert isinstance(conv, nn.modules.conv.Conv2d)
                         fused = torch_utils.fuse_conv_and_bn(conv, b)
-                        a = nn.Sequential(fused, *list(a.children())[i + 1:])
+                        a = ExtSequential(fused, *list(a.children())[i + 1:])
                         break
             fused_list.append(a)
         self.module_list = fused_list
@@ -361,6 +381,7 @@ class DarknetInferenceWithNMS(Darknet):
     route_layers: List[List[int]]
     strides: List[int]
     classes: List[int]
+    non_max_suppression: Callable
     def __init__(self, cfg, img_size=(416, 416), conf_thres=0.1, iou_thres=0.6, classes=[], agnostic_nms=False, half=False):
         super(DarknetInferenceWithNMS, self).__init__(cfg, img_size)
         self.conf_thres = conf_thres
@@ -368,6 +389,7 @@ class DarknetInferenceWithNMS(Darknet):
         self.classes = classes if classes is not None else []
         self.agnostic_nms = agnostic_nms
         self.half = half
+        self.non_max_suppression = torch_script(non_max_suppression)
     def forward(self, img):
         if len(img.shape) == 3:
             if img.shape[-1] < 4:
@@ -379,7 +401,7 @@ class DarknetInferenceWithNMS(Darknet):
         pred = self.core_forward(img)[0]
         if self.half:
             pred = pred.float()
-        res = non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
+        res = self.non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
         return [(r[:, :4], r[:, 5].long(), r[:, 4], r[:, 6:]) for r in res]
 
 

@@ -530,7 +530,7 @@ def box_nms(bboxes, scores, threshold=0.5, mode='union'):
             break
 
         i = order[0]
-        keep.append(i)
+        keep.append(int(i))
 
         if order.numel() == 1:
             break
