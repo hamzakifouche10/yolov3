@@ -5,7 +5,7 @@ import torch.nn as nn
 
 
 class YOLOLayer(nn.Module):
-    ONNX_EXPORT: torch.jit.Final[bool]
+    __constants__ = ['ONNX_EXPORT']
     def __init__(self, anchors, nc, img_size, yolo_index, ONNX_EXPORT):
         super(YOLOLayer, self).__init__()
         self.anchors = torch.tensor(anchors)
