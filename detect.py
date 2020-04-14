@@ -4,7 +4,7 @@ from sys import platform
 from models import *  # set ONNX_EXPORT in models.py
 from utils.datasets import *
 from utils.utils import *
-
+import darknet2pytorch
 
 def detect(save_img=False):
     img_size = (320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
@@ -21,7 +21,10 @@ def detect(save_img=False):
 
     # Initialize model
     #model = Darknet(opt.cfg, img_size)
-    model = DarknetInferenceWithNMS(opt.cfg, img_size, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic_nms=opt.agnostic_nms, half=half)
+    #model = DarknetInferenceWithNMS(opt.cfg, img_size, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic_nms=opt.agnostic_nms, half=half)
+    darknet2pytorch.convert(opt.cfg, img_size, ONNX_EXPORT, 'yolo_plain.py')
+    import yolo_plain
+    model = darknet2pytorch.create_yolo_with_nms(yolo_plain.Yolo, opt.conf_thres, opt.iou_thres, classes=opt.classes, agnostic_nms=opt.agnostic_nms, half=half)
 
     # Load weights
     attempt_download(weights)
@@ -38,10 +41,9 @@ def detect(save_img=False):
         modelc.to(device).eval()
 
     # Fuse Conv2d + BatchNorm2d layers
-    # model.fuse()
+    darknet2pytorch.fuse(model)
 
     # Eval mode
-    model.fuse()
     model.to(device).eval()
 
     img = torch.zeros((1, 3) + img_size)  # (1, 3, 320, 192)
