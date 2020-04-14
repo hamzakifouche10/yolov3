@@ -62,7 +62,7 @@ def create_yolo_with_nms(YoloClass, conf_thres=0.1, iou_thres=0.6, classes=[], a
             self.classes = classes if classes is not None else []
             self.agnostic_nms = agnostic_nms
             self.half = half
-            self.non_max_suppression = torch.jit.script(non_max_suppression)
+            self.non_max_suppression = non_max_suppression
         def load_state_dict(self, state_dict):
             import darknet2pytorch_convert
             super(YoloWithNMS, self).load_state_dict(convert_state_dict_keys(state_dict, self.module_names))
