@@ -200,4 +200,5 @@ if __name__ == '__main__':
     print(opt)
 
     with torch.no_grad():
-        detect()
+        with torch.jit.optimized_execution(False):
+            detect()

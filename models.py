@@ -208,7 +208,7 @@ class Mish(nn.Module):  # https://github.com/digantamisra98/Mish
 
 class YOLOLayer(CallsExt, nn.Module):
     layers: List[int]
-    ONNX_EXPORT: torch.jit.Final[bool]
+    __constants__ = ['ONNX_EXPORT']
     def __init__(self, anchors, nc, img_size, yolo_index, layers: List[int]):
         super(YOLOLayer, self).__init__()
         self.anchors = anchors
@@ -236,9 +236,9 @@ class YOLOLayer(CallsExt, nn.Module):
 
     def forward(self, p, img_size:List[int], out: List[Tensor]):
         bs, _, ny, nx = p.shape  # bs, 255, 13, 13
-        # if not self.ONNX_EXPORT:
-        #     if (self.nx, self.ny) != (nx, ny):
-        #         self.create_grids(img_size, (nx, ny), p)
+        if not self.ONNX_EXPORT:
+            if (self.nx, self.ny) != (nx, ny):
+                self.create_grids(img_size, (nx, ny), p)
 
         # p.view(bs, 255, 13, 13) -- > (bs, 3, 13, 13, 85)  # (bs, anchors, grid, grid, classes + xywh)
         p = p.view(bs, self.na, self.no, self.ny, self.nx).permute(0, 1, 3, 4, 2).contiguous()  # prediction
@@ -398,7 +398,7 @@ class DarknetInferenceWithNMS(Darknet):
         if img.dtype == torch.uint8:
             img = img.half() if self.half else img.float()  # uint8 to fp16/32
             img /= 255.0  # 0 - 255 to 0.0 - 1.0
-        pred = self.core_forward(img)[0]
+        pred = self.core_forward(img)
         if self.half:
             pred = pred.float()
         res = self.non_max_suppression(pred, self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
