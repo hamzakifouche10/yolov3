@@ -2,7 +2,7 @@ from typing import List, Dict, Tuple, Callable
 import torch
 import torch.nn as nn
 import darknet2pytorch_convert
-from models import non_max_suppression
+import models
 from utils import torch_utils
 
 def convert(cfg, img_size, ONNX_EXPORT=False, out_filename=""):
@@ -20,7 +20,7 @@ def convert_state_dict_keys(state_dict, module_names):
     for k,v in state_dict.items():
         names = k.split(".", 2)
         assert len(names) == 3
-        assert names[0] == 'module_list'
+        assert names[0] == 'module_list', k
         idx = int(names[1])
         assert idx<len(module_names), (k, len(module_names))
         new_dict[module_names[idx]+"."+names[2]] = v
@@ -43,6 +43,7 @@ def fuse(module, name = 'model'):
     for name, child in module.named_children():
         fuse(child, name)
 
+# non_max_suppression = torch.jit.script(models.non_max_suppression)
 
 def create_yolo_with_nms(YoloClass, conf_thres=0.1, iou_thres=0.6, classes=[], agnostic_nms=False, half=False):
     class YoloWithNMS(YoloClass):
@@ -62,7 +63,6 @@ def create_yolo_with_nms(YoloClass, conf_thres=0.1, iou_thres=0.6, classes=[], a
             self.classes = classes if classes is not None else []
             self.agnostic_nms = agnostic_nms
             self.half = half
-            self.non_max_suppression = torch.jit.script(non_max_suppression)
         def load_state_dict(self, state_dict):
             import darknet2pytorch_convert
             super(YoloWithNMS, self).load_state_dict(convert_state_dict_keys(state_dict, self.module_names))
@@ -77,6 +77,6 @@ def create_yolo_with_nms(YoloClass, conf_thres=0.1, iou_thres=0.6, classes=[], a
             pred = self.forward_impl(img)
             if self.half:
                 pred = pred.float()
-            res = self.non_max_suppression(pred.cpu(), self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
+            res = models.non_max_suppression(pred.cpu(), self.conf_thres, self.iou_thres, classes=self.classes, agnostic=self.agnostic_nms)
             return [(r[:, :4], r[:, 5].long(), r[:, 4], r[:, 6:]) for r in res]
     return YoloWithNMS(conf_thres, iou_thres, classes, agnostic_nms, half)
