@@ -12,7 +12,7 @@ def test(cfg,
          data,
          weights=None,
          batch_size=16,
-         img_size=416,
+         img_size=(416, 416,), # can be either tuple or int
          conf_thres=0.001,
          iou_thres=0.6,  # for nms
          save_json=False,
@@ -20,6 +20,8 @@ def test(cfg,
          augment=False,
          model=None,
          dataloader=None):
+    if isinstance(img_size, int):
+        img_size = (img_size, img_size,)
     # Initialize/load model and set device
     if model is None:
         device = torch_utils.select_device(opt.device, batch_size=batch_size)
@@ -60,7 +62,7 @@ def test(cfg,
 
     # Dataloader
     if dataloader is None:
-        dataset = LoadImagesAndLabels(path, img_size, batch_size, rect=True, single_cls=opt.single_cls)
+        dataset = LoadImagesAndLabels(path, img_size=img_size, batch_size=batch_size, rect=True, single_cls=opt.single_cls)
         batch_size = min(batch_size, len(dataset))
         dataloader = DataLoader(dataset,
                                 batch_size=batch_size,
@@ -70,7 +72,7 @@ def test(cfg,
 
     seen = 0
     model.eval()
-    _ = model(torch.zeros((1, 3, img_size, img_size), device=device)) if device.type != 'cpu' else None  # run once
+    _ = model(torch.zeros((1, 3, img_size[0], img_size[1]), device=device)) if device.type != 'cpu' else None  # run once
     coco91class = coco80_to_coco91_class()
     s = ('%20s' + '%10s' * 6) % ('Class', 'Images', 'Targets', 'P', 'R', 'mAP@0.5', 'F1')
     p, r, f1, mp, mr, map, mf1, t0, t1 = 0., 0., 0., 0., 0., 0., 0., 0., 0.
@@ -189,7 +191,7 @@ def test(cfg,
 
     # Print speeds
     if verbose or save_json:
-        t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (img_size, img_size, batch_size)  # tuple
+        t = tuple(x / seen * 1E3 for x in (t0, t1, t0 + t1)) + (img_size[0], img_size[1], batch_size)  # tuple
         print('Speed: %.1f/%.1f/%.1f ms inference/NMS/total per %gx%g image at batch-size %g' % t)
 
     # Save JSON

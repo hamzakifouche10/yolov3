@@ -1,5 +1,6 @@
 import glob
 import math
+import sys
 import os
 import random
 import shutil
@@ -20,9 +21,12 @@ from . import torch_utils  # , google_utils
 matplotlib.rc('font', **{'size': 11})
 
 # Suggest 'git pull'
-s = subprocess.check_output('if [ -d .git ]; then git status -uno; fi', shell=True).decode('utf-8')
-if 'Your branch is behind' in s:
-    print(s[s.find('Your branch is behind'):s.find('\n\n')] + '\n')
+try:
+    s = subprocess.check_output('if [ -d .git ]; then git status -uno; fi', shell=True).decode('utf-8')
+    if 'Your branch is behind' in s:
+        print(s[s.find('Your branch is behind'):s.find('\n\n')] + '\n')
+except:
+    print('Warning: ', sys.exc_info()[1])
 
 # Set printoptions
 torch.set_printoptions(linewidth=320, precision=5, profile='long')
@@ -391,6 +395,7 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     # Compute losses
     np, ng = 0, 0  # number grid points, targets
     for i, pi in enumerate(p):  # layer index, layer predictions
+        assert targets[:, 1].max() < pi.shape[4] -5
         b, a, gj, gi = indices[i]  # image, anchor, gridy, gridx
         tobj = torch.zeros_like(pi[..., 0])  # target obj
         np += tobj.numel()
